@@ -54,7 +54,7 @@ type studio struct {
 	lesson             *Lesson
 	page               string
 	editor             widget.Editor
-	clicks             map[string]*widget.Clickable
+	clicks             map[string]*studioButton
 	body, rail, detail layout.List
 	connections        map[string]connection
 	generationError    string
@@ -107,7 +107,7 @@ func run() error {
 		window: w, theme: studioTheme(), ctx: ctx, results: make(chan result, 8),
 		path: path, lib: lib, samples: sampleLessons(), page: "home",
 		editor: widget.Editor{SingleLine: true, Submit: true, MaxLen: 240},
-		clicks: make(map[string]*widget.Clickable), connections: make(map[string]connection),
+		clicks: make(map[string]*studioButton), connections: make(map[string]connection),
 		body: layout.List{Axis: layout.Vertical}, rail: layout.List{Axis: layout.Vertical},
 		detail: layout.List{Axis: layout.Vertical},
 	}

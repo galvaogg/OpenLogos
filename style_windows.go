@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"time"
 
 	"gioui.org/f32"
 	"gioui.org/font"
@@ -15,7 +14,6 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
-	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
@@ -147,12 +145,13 @@ var (
 	outlineButton = appearance{panel, line, ink}
 	activeButton  = appearance{selected, selected, accent}
 	primaryButton = appearance{accent, clear, night}
+	glassButton   = appearance{color.NRGBA{R: 89, G: 102, B: 156, A: 63}, hex(0x414963), ink}
 )
 
 func (s *studio) control(g ctx, id, name string, a appearance, action func(), content view) dim {
 	b := s.clicks[id]
 	if b == nil {
-		b = new(widget.Clickable)
+		b = new(studioButton)
 		s.clicks[id] = b
 	}
 	if action == nil {
@@ -164,15 +163,29 @@ func (s *studio) control(g ctx, id, name string, a appearance, action func(), co
 		s.window.Invalidate()
 	}
 	return b.Layout(g, func(g ctx) dim {
+		var target float32
 		if b.Hovered() && g.Enabled() {
-			if a.fill == accent {
-				a.fill = accentHover
-			} else if a.fill == clear || a.fill == panel {
-				a.fill = hover
-			}
+			target = 1
 			pointer.CursorPointer.Add(g.Ops)
 		}
-		if g.Source.Focused(b) {
+		if b.Pressed() && g.Enabled() {
+			target = 2
+		}
+		level := b.emphasis(g, target)
+		if level > 0 {
+			var lit color.NRGBA
+			switch a.fill {
+			case accent:
+				lit = accentHover
+			case clear, panel:
+				lit = hover
+			default:
+				lit = mixColor(a.fill, accent, 0.14)
+			}
+			a.fill = mixColor(a.fill, lit, min(1, level))
+			a.fill = mixColor(a.fill, canvas, 0.28*max(0, level-1))
+		}
+		if g.Source.Focused(&b.Clickable) {
 			a.border = accent
 		}
 		semantic.Button.Add(g.Ops)
@@ -268,12 +281,17 @@ func glyph(name string, c color.NRGBA) view {
 	}
 }
 
-// The mascot shares the app's progress dots and only animates while the studio is in use.
+// Only the full mascot animates. Its sidebar mark stays static.
 func mascot(g ctx, width, height unit.Dp, focus, working bool) dim {
 	w, h := g.Dp(width), g.Dp(height)
 	scale := float32(min(w, h)) / 112
 	offset := op.Offset(image.Pt((w-int(112*scale))/2, (h-int(112*scale))/2)).Push(g.Ops)
 	defer offset.Pop()
+	frame := mascotFrame{eyes: 1}
+	if !reduceMotion && width >= 72 {
+		frame = mascotMotion(g.Now, working)
+		g.Execute(op.InvalidateCmd{At: g.Now.Add(frame.next)})
+	}
 	for y := 7; y <= 105; y += 9 {
 		for x := 3; x <= 111; x += 9 {
 			dx, dy := x-57, y-54
@@ -282,26 +300,18 @@ func mascot(g ctx, width, height unit.Dp, focus, working bool) dim {
 				if (x+2*y)%5 == 0 {
 					c = hex(0x515d89)
 				}
+				if frame.ripple > 0 {
+					waveRadius := 18 + 38*frame.ripple
+					radius := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+					strength := max(0, 1-float32(math.Abs(float64(radius-waveRadius)))/10)
+					envelope := float32(math.Sin(math.Pi * float64(frame.ripple)))
+					c = mixColor(c, accent, 0.32*strength*envelope)
+				}
 				dot(g, int(float32(x)*scale), int(float32(y)*scale), max(1, int(scale)), max(1, int(scale)), c)
 			}
 		}
 	}
-	t := float64(g.Now.UnixMilli()%6000) / 1000
-	lift := float32(0)
-	blink := !reduceMotion && (working || focus) && t >= 5.65 && t < 5.86
-	if working && !reduceMotion {
-		lift = 4 * float32(math.Sin(t*math.Pi*2/1.5))
-		g.Execute(op.InvalidateCmd{At: g.Now.Add(time.Second / 30)})
-	} else if focus && !reduceMotion {
-		next := 5.65 - t
-		if blink {
-			next = 5.86 - t
-		} else if next < 0 {
-			next += 6
-		}
-		g.Execute(op.InvalidateCmd{At: g.Now.Add(max(time.Millisecond, time.Duration(next*float64(time.Second))))})
-	}
-	p := func(x, y float32) f32.Point { return f32.Pt(x*scale, (y+lift)*scale) }
+	p := func(x, y float32) f32.Point { return f32.Pt(x*scale, (y+frame.lift)*scale) }
 	dot(g, int(57*scale), int(96*scale), int(27*scale), max(1, int(3*scale)), hex(0x202747))
 	var shape clip.Path
 	shape.Begin(g.Ops)
@@ -314,19 +324,15 @@ func mascot(g ctx, width, height unit.Dp, focus, working bool) dim {
 	shape.CubeTo(p(35, 92), p(21, 85), p(18, 66))
 	shape.Close()
 	mask := clip.Outline{Path: shape.End()}.Op().Push(g.Ops)
-	paint.LinearGradientOp{Stop1: p(37, 19), Stop2: p(74, 94), Color1: hex(0xe0e6ff), Color2: hex(0x6779e3)}.Add(g.Ops)
-	paint.PaintOp{}.Add(g.Ops)
+	gradient(g, p(37, 19), p(74, 94), hex(0xe0e6ff), hex(0x6779e3))
 	mask.Pop()
-	ry := 9
-	if blink {
-		ry = 2
-	}
+	ry := max(1, int(9*frame.eyes*scale))
 	look := 0
 	if focus || working {
 		look = -4
 	}
 	c := hex(0x1e254f)
-	dot(g, int(float32(46+look)*scale), int((57+lift)*scale), max(1, int(6*scale)), max(1, int(float32(ry)*scale)), c)
-	dot(g, int(float32(70+look)*scale), int((54+lift)*scale), max(1, int(6*scale)), max(1, int(float32(ry)*scale)), c)
+	dot(g, int(float32(46+look)*scale), int((57+frame.lift)*scale), max(1, int(6*scale)), ry, c)
+	dot(g, int(float32(70+look)*scale), int((54+frame.lift)*scale), max(1, int(6*scale)), ry, c)
 	return dim{Size: image.Pt(w, h)}
 }
