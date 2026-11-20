@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -95,23 +96,40 @@ func (s *studio) addBoardNode(b *Board, shape, label string) {
 	ui := &s.boardUI
 	c := &ui.canvas
 	node := BoardNode{ID: "node-" + strings.ToLower(rand.Text()), Label: label, Shape: shape}
+	card := measureBoardNodes([]BoardNode{node})[0]
 	var p f32.Point
 	if c.scale > 0 {
 		center := f32.Pt(float32(c.size.X)/2, float32(c.size.Y)/2)
-		card := measureBoardNodes([]BoardNode{node})[0]
 		p = center.Sub(c.origin).Div(c.scale).Sub(f32.Pt(card.width/2, card.height/2))
 	}
-	for range len(b.Nodes) + 1 {
-		node.X = min(10000, max(-10000, float64(p.X)))
-		node.Y = min(10000, max(-10000, float64(p.Y)))
-		if !slices.ContainsFunc(b.Nodes, func(n BoardNode) bool { return n.X == node.X && n.Y == node.Y }) {
-			break
+	closest := p
+	distance := float32(math.Inf(1))
+	consider := func(q f32.Point) {
+		q.X, q.Y = min(10000, max(-10000, q.X)), min(10000, max(-10000, q.Y))
+		d := normBoardPoint(q.Sub(p))
+		r := card.rect(q).outset(12)
+		if d < distance && !slices.ContainsFunc(c.rects, r.overlaps) {
+			closest, distance = q, d
 		}
-		p = p.Add(f32.Pt(24, 24))
 	}
+	consider(p)
+	const spacing = 48
+	for _, r := range c.rects {
+		consider(f32.Pt(r.max.X+spacing, p.Y))
+		consider(f32.Pt(r.min.X-card.width-spacing, p.Y))
+		consider(f32.Pt(p.X, r.max.Y+spacing))
+		consider(f32.Pt(p.X, r.min.Y-card.height-spacing))
+	}
+	node.X = float64(min(10000, max(-10000, closest.X)))
+	node.Y = float64(min(10000, max(-10000, closest.Y)))
 	next := b.clone()
 	next.Nodes = append(next.Nodes, node)
 	if s.commitBoardEdit(b, next) {
+		rect := card.rect(boardNodePosition(node))
+		start, end := c.screen(rect.min), c.screen(rect.max)
+		if start.X < 0 || start.Y < 0 || end.X > float32(c.size.X) || end.Y > float32(c.size.Y) {
+			c.fit()
+		}
 		c.selectNode(node.ID)
 		ui.editNode(node)
 	}
@@ -184,7 +202,8 @@ func (s *studio) boardNodeControls(b *Board, i int) view {
 		connections = func() { ui.openConnection(b, node.ID, edges, 0) }
 	}
 	return func(g ctx) dim {
-		return row(g, s.button("board-node-edit", "Editar nó selecionado", "", quietButton, func() { ui.editNode(node) }),
+		return row(g, s.button("board-node-focus", "Focar nó", "", outlineButton, func() { ui.canvas.focusNode(node.ID) }),
+			gap(4), s.button("board-node-edit", "Editar nó", "", quietButton, func() { ui.editNode(node) }),
 			gap(4), s.button("board-connect", "Conectar", "", outlineButton, connect),
 			gap(4), s.button("board-connections", fmt.Sprintf("Conexões (%d)", len(edges)), "", quietButton, connections),
 			gap(4), s.button("board-node-remove", "Excluir nó", "", quietButton, func() {

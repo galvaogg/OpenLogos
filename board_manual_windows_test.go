@@ -5,6 +5,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -104,6 +105,11 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 	if len(current.Nodes) != 1 || current.Title != "Fluxo manual" || current.Nodes[0].Label != "Início" {
 		t.Fatalf("first node or title did not save: %+v", current)
 	}
+	click("Focar nó")
+	if c := &s.boardUI.canvas; c.fitted || c.scale < 1 {
+		t.Fatal("focusing a selected node should leave overview mode at reading scale")
+	}
+	click("Enquadrar")
 
 	nodePoint := func(n BoardNode) f32.Point {
 		r := bounds("Área do quadro.")
@@ -132,8 +138,10 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 
 	click("+ Elipse")
 	click("Losango")
+	edit("Título do nó", s.boardUI.label.Len(), "Revisar?")
 	click("Salvar nó")
 	click("+ Elipse")
+	edit("Título do nó", s.boardUI.label.Len(), "Exemplo")
 	click("Salvar nó")
 	click("+ Texto")
 	edit("Título do nó", s.boardUI.label.Len(), "Texto livre")
@@ -141,6 +149,11 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 	if len(current.Nodes) != 4 || current.Nodes[1].Shape != "diamond" || current.Nodes[2].Shape != "ellipse" ||
 		current.Nodes[3].Shape != "text" || current.Nodes[3].Label != "Texto livre" {
 		t.Fatalf("manual elements did not save: %+v", current.Nodes)
+	}
+	for i, r := range s.boardUI.canvas.rects {
+		if slices.ContainsFunc(s.boardUI.canvas.rects[:i], r.overlaps) {
+			t.Fatalf("new element %d overlaps a previously placed element", i)
+		}
 	}
 
 	click("Conectar")

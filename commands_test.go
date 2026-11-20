@@ -37,6 +37,7 @@ func TestStudyQuestionRequests(t *testing.T) {
 		{"Busque questões sobre fotossíntese", true},
 		{"Dê algumas questões sobre fotossíntese", true},
 		{"Pesquise no Google questões de química", true},
+		{"Pesquise no Google por 2 questões de química", true},
 		{"2 questões de história do ENEM", true},
 		{"/praticar encontre questões de matemática", true},
 		{"/praticar fases da Lua", false},
@@ -44,6 +45,8 @@ func TestStudyQuestionRequests(t *testing.T) {
 		{"Questões ambientais no Brasil", false},
 		{"Quero estudar questões ambientais", false},
 		{"Crie questões sobre frações", false},
+		{"/praticar frações sem buscar questões na web", false},
+		{"Questões de probabilidade, não use o Google", false},
 		{"Como questões abertas ajudam na aprendizagem?", false},
 	} {
 		request, err := parseStudyRequest(tc.input)

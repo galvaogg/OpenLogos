@@ -79,9 +79,7 @@ func (c *boardCanvas) zoomAt(anchor f32.Point, factor float64) {
 
 func (c *boardCanvas) frame(bounds boardRect, size image.Point, dpi float32) {
 	center := f32.Pt(float32(size.X)/2, float32(size.Y)/2)
-	margin := f32.Pt(min(28*dpi, center.X*.28), min(28*dpi, center.Y*.28))
-	available, world := center.Sub(margin).Mul(2), bounds.size()
-	c.fitScale = min(1.25*dpi, available.X/max(1, world.X), available.Y/max(1, world.Y))
+	c.fitScale = boardFitScale(bounds, center, dpi)
 	resized := c.dpi != dpi || c.size != size
 	if c.scale == 0 || c.refit || c.fitted && (resized || bounds != c.framedBounds) && !c.drag.active {
 		c.scale = c.fitScale
@@ -95,6 +93,24 @@ func (c *boardCanvas) frame(bounds boardRect, size image.Point, dpi float32) {
 		c.scale *= ratio
 	}
 	c.size, c.dpi = size, dpi
+}
+
+func boardFitScale(bounds boardRect, center f32.Point, dpi float32) float32 {
+	margin := f32.Pt(min(28*dpi, center.X*.28), min(28*dpi, center.Y*.28))
+	available, world := center.Sub(margin).Mul(2), bounds.size()
+	return min(1.25*dpi, available.X/max(1, world.X), available.Y/max(1, world.Y))
+}
+
+func (c *boardCanvas) focusNode(id string) {
+	i := boardCanvasIndex(c.nodes, id)
+	if i < 0 || c.scale == 0 {
+		return
+	}
+	center := f32.Pt(float32(c.size.X)/2, float32(c.size.Y)/2)
+	node := c.rects[i]
+	c.scale = boardFitScale(node, center, c.dpi)
+	c.origin = center.Sub(node.center().Mul(c.scale))
+	c.fitted, c.refit = false, false
 }
 
 func (c *boardCanvas) scene(b *Board) {

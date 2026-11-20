@@ -61,6 +61,25 @@ func TestBoardPayloadRejectsUnknownEdgeAndIgnoresInjectedGeometry(t *testing.T) 
 	}
 }
 
+func TestBoardGenerationRetriesInvalidGraph(t *testing.T) {
+	bad := strings.Replace(boardProviderFixture, `"to":"chuva"`, `"to":"inexistente"`, 1)
+	calls := 0
+	board, err := generateBoardWithProvider(context.Background(), codex, "mindmap", "Ciclo da água", "", nil,
+		func(_ context.Context, _, _, prompt string) ([]byte, error) {
+			calls++
+			if calls == 1 {
+				return []byte(bad), nil
+			}
+			if !strings.HasPrefix(prompt, "A resposta anterior falhou na validação.") {
+				t.Fatal("missing validation feedback")
+			}
+			return []byte(boardProviderFixture), nil
+		})
+	if err != nil || calls != 2 || board.Title != "Ciclo da água" {
+		t.Fatalf("board=%+v calls=%d err=%v", board, calls, err)
+	}
+}
+
 func TestBoardRevisionAcceptsSparseManualContent(t *testing.T) {
 	const empty = `{"title":"Quadro em branco","nodes":[],"edges":[]}`
 	if _, err := decodeBoardPayload("mindmap", []byte(empty), false); err == nil {

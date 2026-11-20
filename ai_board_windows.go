@@ -96,28 +96,30 @@ func boardPrompt(kind, prompt, material string, current *Board) (string, error) 
 }
 
 func generateBoard(ctx context.Context, provider, kind, prompt, material string, current *Board) (Board, error) {
+	return generateBoardWithProvider(ctx, provider, kind, prompt, material, current, structuredPayload)
+}
+
+func generateBoardWithProvider(ctx context.Context, provider, kind, prompt, material string, current *Board,
+	complete func(context.Context, string, string, string) ([]byte, error),
+) (Board, error) {
 	instructions, err := boardPrompt(kind, prompt, material, current)
 	if err != nil {
 		return Board{}, err
 	}
-	stdout, stderr, err := runStructuredProvider(ctx, provider, boardSchema, instructions)
-	if err != nil {
-		return Board{}, err
-	}
-	var payload []byte
-	if provider == codex {
-		payload, err = codexLessonPayload(stdout)
-	} else {
-		var failed bool
-		payload, failed, err = claudeStructuredPayload(stdout)
-		if failed {
-			return Board{}, providerError(ctx, provider, stdout, stderr, errors.New("Claude Code reportou erro"))
+	var board Board
+	for range 2 {
+		payload, providerErr := complete(ctx, provider, boardSchema, instructions)
+		if providerErr != nil {
+			return Board{}, providerErr
 		}
+		board, err = decodeBoardPayload(kind, payload, current != nil)
+		if err == nil || ctx.Err() != nil {
+			return board, err
+		}
+		instructions = "A resposta anterior falhou na validação. Confira IDs ASCII únicos, destinos existentes e limites de texto. " +
+			"Prefira rótulos de até 45 caracteres e detalhes de até 80.\n" + instructions
 	}
-	if err != nil {
-		return Board{}, errors.New("A IA não devolveu um quadro no formato esperado. Tente outro pedido.")
-	}
-	return decodeBoardPayload(kind, payload, current != nil)
+	return board, err
 }
 
 func decodeBoardPayload(kind string, payload []byte, revision bool) (Board, error) {

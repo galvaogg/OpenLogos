@@ -93,7 +93,7 @@ func generateLesson(ctx context.Context, provider string, request studyRequest, 
 		}
 		search = google.results
 	}
-	return generateStudyLesson(ctx, provider, request, strings.Join(notes, "\n\n"), search, lessonStructuredResponse)
+	return generateStudyLesson(ctx, provider, request, strings.Join(notes, "\n\n"), search, structuredPayload)
 }
 
 func generateStudyLesson(ctx context.Context, provider string, request studyRequest, material string,
@@ -177,7 +177,7 @@ func generateStudyLesson(ctx context.Context, provider string, request studyRequ
 	return lesson, nil
 }
 
-func lessonStructuredResponse(ctx context.Context, provider, schema, prompt string) ([]byte, error) {
+func structuredPayload(ctx context.Context, provider, schema, prompt string) ([]byte, error) {
 	stdout, stderr, err := runStructuredProvider(ctx, provider, schema, prompt)
 	if err != nil {
 		return nil, err

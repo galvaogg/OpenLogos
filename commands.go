@@ -46,11 +46,13 @@ func parseStudyRequest(draft string) (studyRequest, error) {
 	return studyRequest{}, errors.New("Comando desconhecido. Clique em / para ver os disponíveis.")
 }
 
-var questionLookup = regexp.MustCompile(`(?i)(^|[\s,])(busque|buscar|pesquise|pesquisar|procure|procurar|encontre|encontrar|traga|mostre|mande|quero|preciso de|d[eê]|liste|use|me passe)\s+(?:(?:no google|na web|algumas?|\d+)\s+)?quest([õo]es|[ãa]o)([\s:.,?!]|$)`)
+var questionLookup = regexp.MustCompile(`(?i)(^|[\s,])(busque|buscar|pesquise|pesquisar|procure|procurar|encontre|encontrar|traga|mostre|mande|quero|preciso de|d[eê]|liste|use|me passe)\s+(?:(?:no google|na web)\s+)?(?:por\s+)?(?:(?:algumas?|\d+)\s+)?quest([õo]es|[ãa]o)([\s:.,?!]|$)`)
 var questionList = regexp.MustCompile(`(?i)^(\d+\s+)?quest([õo]es|[ãa]o)\s+(de|do|da|sobre|para)\s`)
+var skipQuestionLookup = regexp.MustCompile(`(?i)\b(?:sem\s+(?:buscar|pesquisar|usar\s+(?:o\s+)?google)|n[ãa]o\s+(?:busque|pesquise|procure|use\s+(?:o\s+)?google))\b`)
 
 func (request studyRequest) searchesQuestions() bool {
-	return request.command == "/questoes" || questionList.MatchString(request.topic) || questionLookup.MatchString(request.topic)
+	return request.command == "/questoes" || !skipQuestionLookup.MatchString(request.topic) &&
+		(questionList.MatchString(request.topic) || questionLookup.MatchString(request.topic))
 }
 
 func (request studyRequest) guidance() string {
