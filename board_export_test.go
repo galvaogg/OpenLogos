@@ -82,3 +82,14 @@ func TestBoardExportKeepsEarlierCopies(t *testing.T) {
 		t.Fatalf("earlier edits overwritten: %q, %v", earlier, err)
 	}
 }
+
+func TestBoardExportAllowsEmptyScene(t *testing.T) {
+	data, err := boardExcalidraw(Board{Kind: "mindmap", Title: "Em branco"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scene struct{ Elements []json.RawMessage }
+	if err := json.Unmarshal(data, &scene); err != nil || scene.Elements == nil || len(scene.Elements) > 0 {
+		t.Fatalf("expected an empty element array: %s, %v", data, err)
+	}
+}

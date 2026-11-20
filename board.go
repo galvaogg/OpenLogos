@@ -15,6 +15,8 @@ const (
 	boardNodeHeight = 100
 	boardStepX      = boardNodeWidth + 105
 	boardStepY      = boardNodeHeight + 43
+	boardMaxNodes   = 24
+	boardMaxEdges   = 42
 )
 
 type Board struct {
@@ -52,6 +54,15 @@ func boardKindName(kind string) string {
 	return ""
 }
 
+func (n BoardNode) excalidrawType() string {
+	switch n.Shape {
+	case "ellipse", "diamond", "text":
+		return n.Shape
+	default:
+		return "rectangle"
+	}
+}
+
 func boardText(value string, limit int, optional bool) bool {
 	return (optional && value == "" || validText(value, limit)) &&
 		utf8.ValidString(value) && strings.IndexFunc(value, unicode.IsControl) < 0
@@ -59,8 +70,8 @@ func boardText(value string, limit int, optional bool) bool {
 
 func validateBoard(b Board) error {
 	if boardKindName(b.Kind) == "" || !boardText(b.Title, 90, false) ||
-		len(b.Nodes) < 2 || len(b.Nodes) > 24 || len(b.Edges) < 1 || len(b.Edges) > 42 {
-		return errors.New("O quadro precisa de título, 2 a 24 nós e conexões válidas.")
+		len(b.Nodes) > boardMaxNodes || len(b.Edges) > boardMaxEdges {
+		return errors.New("O quadro precisa de título válido e pode ter até 24 nós e 42 conexões.")
 	}
 	nodes := make(map[string]bool, len(b.Nodes))
 	for _, n := range b.Nodes {
@@ -71,7 +82,7 @@ func validateBoard(b Board) error {
 			return errors.New("O quadro contém um nó inválido ou repetido.")
 		}
 		switch n.Shape {
-		case "topic", "step", "note", "decision":
+		case "topic", "step", "note", "decision", "ellipse", "diamond", "text":
 		default:
 			return errors.New("O quadro contém um tipo de nó desconhecido.")
 		}
@@ -86,6 +97,13 @@ func validateBoard(b Board) error {
 		edges[pair] = true
 	}
 	return nil
+}
+
+func validateGeneratedBoard(b Board) error {
+	if len(b.Nodes) < 2 || len(b.Edges) < 1 {
+		return errors.New("O quadro gerado precisa ter ao menos dois nós e uma conexão.")
+	}
+	return validateBoard(b)
 }
 
 func (b Board) clone() Board {
@@ -155,6 +173,10 @@ func arrangeBoard(b *Board, previous *Board) {
 }
 
 func boardColumns(b Board) map[string]int {
+	columns := make(map[string]int, len(b.Nodes))
+	if len(b.Nodes) == 0 {
+		return columns
+	}
 	adjacent := make(map[string][]string)
 	incoming := make(map[string]int)
 	for _, edge := range b.Edges {
@@ -164,7 +186,6 @@ func boardColumns(b Board) map[string]int {
 			adjacent[edge.To] = append(adjacent[edge.To], edge.From)
 		}
 	}
-	columns := make(map[string]int, len(b.Nodes))
 	root := b.Nodes[0].ID
 	if b.Kind == "mindmap" {
 		for _, n := range b.Nodes {

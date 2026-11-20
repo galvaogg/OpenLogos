@@ -15,6 +15,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
 )
@@ -90,7 +91,7 @@ func (c *boardCanvas) frame(nodes []BoardNode, size image.Point, dpi float32) {
 	c.size, c.dpi = size, dpi
 }
 
-func (c *boardCanvas) layout(g ctx, s *studio, b *Board, editable bool, onMove func()) dim {
+func (c *boardCanvas) layout(g ctx, s *studio, b *Board, editable bool, onMove func(BoardNode)) dim {
 	size := g.Constraints.Max
 	if size.X <= 2 || size.Y <= 2 {
 		return dim{Size: size}
@@ -159,7 +160,7 @@ func boardCanvasIndex(nodes []BoardNode, id string) int {
 	return slices.IndexFunc(nodes, func(n BoardNode) bool { return n.ID == id })
 }
 
-func (c *boardCanvas) update(g ctx, nodes []BoardNode, editable bool, onMove func()) {
+func (c *boardCanvas) update(g ctx, nodes []BoardNode, editable bool, onMove func(BoardNode)) {
 	if boardCanvasIndex(nodes, c.selected) < 0 {
 		c.selected = ""
 	}
@@ -190,7 +191,7 @@ func (c *boardCanvas) update(g ctx, nodes []BoardNode, editable bool, onMove fun
 	}
 }
 
-func (c *boardCanvas) handlePointer(g ctx, e pointer.Event, nodes []BoardNode, editable bool, onMove func()) {
+func (c *boardCanvas) handlePointer(g ctx, e pointer.Event, nodes []BoardNode, editable bool, onMove func(BoardNode)) {
 	switch e.Kind {
 	case pointer.Scroll:
 		if !c.drag.active {
@@ -236,7 +237,7 @@ func (c *boardCanvas) handlePointer(g ctx, e pointer.Event, nodes []BoardNode, e
 	}
 }
 
-func (c *boardCanvas) handleKey(g ctx, name key.Name, nodes []BoardNode, editable bool, onMove func()) {
+func (c *boardCanvas) handleKey(g ctx, name key.Name, nodes []BoardNode, editable bool, onMove func(BoardNode)) {
 	i := boardCanvasIndex(nodes, c.selected)
 	var delta f32.Point
 	switch name {
@@ -268,15 +269,16 @@ func (c *boardCanvas) handleKey(g ctx, name key.Name, nodes []BoardNode, editabl
 	g.Execute(op.InvalidateCmd{})
 }
 
-func moveCanvasNode(node *BoardNode, p f32.Point, onMove func()) {
+func moveCanvasNode(node *BoardNode, p f32.Point, onMove func(BoardNode)) {
 	x := min(10000, max(-10000, float64(p.X)))
 	y := min(10000, max(-10000, float64(p.Y)))
 	if node.X == x && node.Y == y {
 		return
 	}
+	previous := *node
 	node.X, node.Y = x, y
 	if onMove != nil {
-		onMove()
+		onMove(previous)
 	}
 }
 
@@ -414,22 +416,25 @@ func (c *boardCanvas) node(g ctx, s *studio, n BoardNode, p f32.Point, chosen bo
 	offset := op.Offset(origin).Push(g.Ops)
 	defer offset.Pop()
 	radius := max(3, int(13*c.scale))
-	outer := clip.UniformRRect(local, radius).Op(g.Ops).Push(g.Ops)
+	kind := n.excalidrawType()
+	outer := boardNodeClip(g.Ops, local, radius, kind).Push(g.Ops)
 	defer outer.Pop()
 	semantic.LabelOp(n.Label).Add(g.Ops)
 	semantic.DescriptionOp(n.Detail).Add(g.Ops)
 	semantic.SelectedOp(chosen).Add(g.Ops)
-	paint.Fill(g.Ops, border)
-	stroke := max(1, int(c.dpi))
-	if chosen {
-		stroke *= 2
-	}
-	inner := clip.UniformRRect(local.Inset(stroke), max(2, radius-stroke)).Op(g.Ops).Push(g.Ops)
-	defer inner.Pop()
-	if n.Shape == "topic" {
-		gradient(g, f32.Pt(0, 0), f32.Pt(float32(local.Max.X), float32(local.Max.Y)), hex(0x404b7b), fill)
-	} else {
-		paint.Fill(g.Ops, fill)
+	if kind != "text" {
+		paint.Fill(g.Ops, border)
+		stroke := max(1, int(c.dpi))
+		if chosen {
+			stroke *= 2
+		}
+		inner := boardNodeClip(g.Ops, local.Inset(stroke), max(2, radius-stroke), kind).Push(g.Ops)
+		if n.Shape == "topic" {
+			gradient(g, f32.Pt(0, 0), f32.Pt(float32(local.Max.X), float32(local.Max.Y)), hex(0x404b7b), fill)
+		} else {
+			paint.Fill(g.Ops, fill)
+		}
+		defer inner.Pop()
 	}
 
 	zoom := c.scale / c.dpi
@@ -438,9 +443,20 @@ func (c *boardCanvas) node(g ctx, s *studio, n BoardNode, p f32.Point, chosen bo
 	title.Color, title.Font.Weight, title.MaxLines = ink, font.SemiBold, 2
 	detail := material.Label(s.theme, unit.Sp(max(8, 13*zoom)), n.Detail)
 	detail.Color, detail.MaxLines = tint, 2
+	align, pad := layout.W, float32(14)
+	switch kind {
+	case "ellipse", "diamond":
+		align, pad = layout.Center, 32
+		title.Alignment, detail.Alignment = text.Middle, text.Middle
+	case "text":
+		if chosen {
+			title.Color, detail.Color = accent, accent
+		}
+	}
 	g.Constraints = layout.Exact(local.Size())
-	inset(unit.Dp(max(3, 14*zoom)), func(g ctx) dim {
-		return layout.W.Layout(g, func(g ctx) dim {
+	vertical := unit.Dp(max(3, 14*zoom))
+	padding(vertical, unit.Dp(max(3, pad*zoom)), vertical, func(g ctx) dim {
+		return align.Layout(g, func(g ctx) dim {
 			if n.Detail == "" || zoom < .42 {
 				return title.Layout(g)
 			}

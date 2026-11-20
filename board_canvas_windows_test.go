@@ -24,7 +24,7 @@ func TestBoardCanvasInputThroughGio(t *testing.T) {
 	render := func() {
 		ops.Reset()
 		g := ctx{Ops: &ops, Source: router.Source(), Constraints: layout.Exact(size)}
-		c.layout(g, s, &board, editable, func() { saves++ })
+		c.layout(g, s, &board, editable, func(BoardNode) { saves++ })
 		router.Frame(&ops)
 	}
 	mouse := func(kind pointer.Kind, buttons pointer.Buttons, p f32.Point) {

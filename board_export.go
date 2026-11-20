@@ -69,11 +69,20 @@ func boardExcalidraw(b Board) ([]byte, error) {
 		case "note":
 			stroke, fill = "#23695f", "#dbf4ef"
 		}
-		shape := element(id, "rectangle", node.X, node.Y, boardNodeWidth, boardNodeHeight, stroke, fill)
-		shape["roundness"] = map[string]int{"type": 3}
 		labelText := node.Label
 		if node.Detail != "" {
 			labelText += "\n" + node.Detail
+		}
+		kind := node.excalidrawType()
+		if kind == "text" {
+			label := text(id, labelText, "", node.X, node.Y, boardNodeWidth, 17)
+			label["y"] = node.Y + (boardNodeHeight-label["height"].(float64))/2
+			shapes[i] = label
+			continue
+		}
+		shape := element(id, kind, node.X, node.Y, boardNodeWidth, boardNodeHeight, stroke, fill)
+		if kind == "rectangle" {
+			shape["roundness"] = map[string]int{"type": 3}
 		}
 		label := text(id+"-text", labelText, id, node.X+10, node.Y+6, boardNodeWidth-20, 14)
 		label["y"] = node.Y + (boardNodeHeight-label["height"].(float64))/2
@@ -115,10 +124,15 @@ func boardExcalidraw(b Board) ([]byte, error) {
 	}
 	for i := range shapes {
 		shapes[i]["boundElements"] = bindings[i]
-		elements = append(elements, shapes[i], labels[i])
+		elements = append(elements, shapes[i])
+		if labels[i] != nil {
+			elements = append(elements, labels[i])
+		}
 	}
-	titleWidth := max(float64(boardNodeWidth), float64(len([]rune(b.Title)))*11)
-	elements = append(elements, text("board-title", b.Title, "", minX, minY-50, titleWidth, 22))
+	if len(b.Nodes) > 0 {
+		titleWidth := max(float64(boardNodeWidth), float64(len([]rune(b.Title)))*11)
+		elements = append(elements, text("board-title", b.Title, "", minX, minY-50, titleWidth, 22))
+	}
 	return json.MarshalIndent(map[string]any{
 		"type": "excalidraw", "version": 2, "source": "https://github.com/galvaogg/OpenLogos",
 		"elements": elements, "appState": map[string]string{"viewBackgroundColor": "#fbfaf8"},

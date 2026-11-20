@@ -20,7 +20,7 @@ const boardProviderFixture = `{
 }`
 
 func TestBoardPromptCarriesOnlySemanticContext(t *testing.T) {
-	board, err := decodeBoardPayload("mindmap", []byte(boardProviderFixture))
+	board, err := decodeBoardPayload("mindmap", []byte(boardProviderFixture), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,13 +51,30 @@ func TestBoardPromptCarriesOnlySemanticContext(t *testing.T) {
 
 func TestBoardPayloadRejectsUnknownEdgeAndIgnoresInjectedGeometry(t *testing.T) {
 	malformed := strings.Replace(boardProviderFixture, `"to":"chuva"`, `"to":"inexistente"`, 1)
-	if _, err := decodeBoardPayload("mindmap", []byte(malformed)); err == nil {
+	if _, err := decodeBoardPayload("mindmap", []byte(malformed), false); err == nil {
 		t.Fatal("accepted an edge with an unknown destination")
 	}
 	withPosition := strings.Replace(boardProviderFixture, `"id":"ciclo"`, `"id":"ciclo","x":1200`, 1)
-	board, err := decodeBoardPayload("mindmap", []byte(withPosition))
+	board, err := decodeBoardPayload("mindmap", []byte(withPosition), false)
 	if err != nil || board.Nodes[0].X != 0 {
 		t.Fatalf("provider should supply semantics only: %+v, %v", board, err)
+	}
+}
+
+func TestBoardRevisionAcceptsSparseManualContent(t *testing.T) {
+	const empty = `{"title":"Quadro em branco","nodes":[],"edges":[]}`
+	if _, err := decodeBoardPayload("mindmap", []byte(empty), false); err == nil {
+		t.Fatal("new generated board must still include nodes and connections")
+	}
+	b, err := decodeBoardPayload("mindmap", []byte(empty), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrangeBoard(&b, nil)
+	b.Nodes = []BoardNode{{ID: "texto", Shape: "text", Label: "Texto livre", X: 90, Y: 35}}
+	prompt, err := boardPrompt(b.Kind, "Renomeie o quadro", "", &b)
+	if err != nil || !strings.Contains(prompt, `"shape":"text"`) {
+		t.Fatalf("revision lost standalone text: %v", err)
 	}
 }
 
@@ -69,7 +86,7 @@ func TestBoardProviderLive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if provider == codex {
-		original, err := decodeBoardPayload("mindmap", []byte(boardProviderFixture))
+		original, err := decodeBoardPayload("mindmap", []byte(boardProviderFixture), false)
 		if err != nil {
 			t.Fatal(err)
 		}

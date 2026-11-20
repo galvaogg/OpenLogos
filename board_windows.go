@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,19 +12,26 @@ import (
 	"gioui.org/font"
 	"gioui.org/io/semantic"
 	"gioui.org/layout"
+	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
 type boardState struct {
-	id, kind, editing string
-	source            studyAttachment
-	canvas            boardCanvas
-	create, refine    widget.Editor
-	label, detail     widget.Editor
-	preview, undo     *Board
-	running           bool
-	err, message      string
+	id, kind, editing  string
+	source             studyAttachment
+	canvas             boardCanvas
+	create, refine     widget.Editor
+	label, detail      widget.Editor
+	title, edgeLabel   widget.Editor
+	shape, connecting  string
+	renaming, edgeOpen bool
+	edgeIndex          int
+	preview            *Board
+	undo               map[string][]Board
+	running            bool
+	err, message       string
 }
 
 type boardJob struct {
@@ -55,6 +63,7 @@ func (s *studio) startBoard(kind, prompt, material string, current *Board, draft
 	provider := s.lib.Provider
 	s.generationError, s.activeTopic, s.showCommands = "", prompt, false
 	ui.err, ui.message, ui.running = "", "", true
+	ui.resetEdit()
 	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Minute)
 	s.stop = cancel
 	s.work.Add(1)
@@ -72,7 +81,11 @@ func (s *studio) finishBoard(b Board, job boardJob, err error) {
 	ui := &s.boardUI
 	ui.running = false
 	if err == nil {
-		err = validateBoard(b)
+		if job.target == "" {
+			err = validateGeneratedBoard(b)
+		} else {
+			err = validateBoard(b)
+		}
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -125,7 +138,8 @@ func (s *studio) openBoard(id string) {
 	}
 	ui := &s.boardUI
 	if ui.id != id {
-		ui.id, ui.editing, ui.message, ui.err = id, "", "", ""
+		ui.id, ui.message, ui.err = id, "", ""
+		ui.resetEdit()
 		ui.canvas.selectNode("")
 		ui.canvas.fit()
 		ui.refine.SetText("")
@@ -152,7 +166,10 @@ func (s *studio) boardHub() []view {
 		ui.kind = "mindmap"
 	}
 	items := []view{gap(23), s.title("Quadros visuais", 38), gap(9),
-		s.label("Crie um diagrama e ajuste o resultado com o agente ou direto no quadro.", 15, muted, font.Normal), gap(19),
+		s.label("Monte um quadro em branco ou gere um diagrama com o agente.", 15, muted, font.Normal), gap(13),
+		func(g ctx) dim {
+			return s.button("board-blank", "Novo quadro em branco", "plus", primaryButton, s.createBlankBoard)(g)
+		}, gap(12),
 		s.boardCreationPanel, gap(24)}
 	if ui.preview != nil {
 		items = append(items, s.button("board-pending", "Revisar proposta pendente", "spark", activeButton, func() { s.openBoard(ui.preview.ID) }), gap(13))
@@ -240,10 +257,15 @@ func (s *studio) boardEditor(editor *widget.Editor, label, hint string, limit in
 			border = accent
 		}
 		return box(g, canvas, border, 9, wide(padding(9, 11, 9, func(g ctx) dim {
-			semantic.LabelOp(label).Add(g.Ops)
 			e := material.Editor(s.theme, editor, hint)
 			e.TextSize, e.HintColor, e.Color = 14, subtle, ink
-			return e.Layout(g)
+			m := op.Record(g.Ops)
+			d := e.Layout(g)
+			content := m.Stop()
+			defer clip.Rect(image.Rectangle{Max: d.Size}).Push(g.Ops).Pop()
+			semantic.LabelOp(label).Add(g.Ops)
+			content.Add(g.Ops)
+			return d
 		})))
 	}
 }
@@ -285,23 +307,20 @@ func (s *studio) boardWorkspace(g ctx) dim {
 				var export, organize, undo func()
 				if editable {
 					export = func() { s.exportBoard(*b) }
-					organize = func() {
-						value := b.clone()
-						ui.undo = &value
-						arrangeBoard(b, nil)
-						ui.canvas.fit()
-						s.save()
-					}
-					if ui.undo != nil && ui.undo.ID == b.ID {
-						undo = func() {
-							*b = *ui.undo
-							ui.undo, ui.editing = nil, ""
-							ui.canvas.fit()
-							s.save()
+					if len(b.Nodes) > 0 {
+						organize = func() {
+							next := b.clone()
+							arrangeBoard(&next, nil)
+							if s.commitBoardEdit(b, next) {
+								ui.canvas.fit()
+							}
 						}
 					}
+					if len(ui.undo[b.ID]) > 0 {
+						undo = func() { s.undoBoardEdit(b) }
+					}
 				}
-				return column(g, s.title(display.Title, 29), gap(4),
+				header := []view{s.title(display.Title, 29), gap(4),
 					s.label(fmt.Sprintf("%s · %d nós · %d conexões", boardKindName(display.Kind), len(display.Nodes), len(display.Edges)), 13, muted, font.Normal),
 					gap(8), func(g ctx) dim {
 						return (layout.Flex{Spacing: layout.SpaceBetween, Alignment: layout.Middle}).Layout(g,
@@ -315,12 +334,19 @@ func (s *studio) boardWorkspace(g ctx) dim {
 									s.button("board-undo", "Desfazer", "", quietButton, undo), gap(3),
 									s.button("board-export", "Exportar", "", outlineButton, export))
 							}))
-					}, gap(8))
+					}, gap(8)}
+				if editable {
+					header = append(header, s.boardManualTools(b), gap(8))
+				}
+				return column(g, header...)
 			})),
 			layout.Flexed(1, func(g ctx) dim {
 				g.Constraints.Min = g.Constraints.Max
-				return ui.canvas.layout(g, s, display, editable, func() {
-					ui.undo = nil
+				return ui.canvas.layout(g, s, display, editable, func(previous BoardNode) {
+					before := b.clone()
+					before.Nodes[boardCanvasIndex(before.Nodes, previous.ID)] = previous
+					ui.remember(before)
+					ui.message = ""
 					s.save()
 				})
 			}),
@@ -337,12 +363,11 @@ func (s *studio) boardDock(g ctx, b *Board, preview, editable bool) dim {
 	if preview {
 		content = append(content, s.label("Proposta do agente", 14, accent, font.SemiBold), gap(6), func(g ctx) dim {
 			return row(g, s.button("board-apply", "Aplicar proposta", "check", primaryButton, func() {
-				previous := b.clone()
-				ui.undo = &previous
-				*b = *ui.preview
-				ui.preview, ui.editing = nil, ""
-				ui.refine.SetText("")
-				s.save()
+				if s.commitBoardEdit(b, *ui.preview) {
+					ui.preview = nil
+					ui.resetEdit()
+					ui.refine.SetText("")
+				}
 			}), gap(6), s.button("board-discard", "Descartar", "", quietButton, func() {
 				ui.preview = nil
 				ui.canvas.fit()
@@ -355,12 +380,7 @@ func (s *studio) boardDock(g ctx, b *Board, preview, editable bool) dim {
 		})
 	} else {
 		if editable {
-			for i, node := range b.Nodes {
-				if node.ID == ui.canvas.selected {
-					content = append(content, s.boardNodeControls(b, i), gap(7))
-					break
-				}
-			}
+			content = append(content, s.boardManualDock(b))
 		}
 		var request func()
 		if s.stop == nil {
@@ -382,38 +402,4 @@ func (s *studio) boardDock(g ctx, b *Board, preview, editable bool) dim {
 		content = append(content, gap(5), s.label(ui.message, 13, good, font.Normal))
 	}
 	return column(g, content...)
-}
-
-func (s *studio) boardNodeControls(b *Board, i int) view {
-	ui := &s.boardUI
-	node := b.Nodes[i]
-	if ui.editing != node.ID {
-		return s.button("board-node-edit", "Editar nó selecionado", "", quietButton, func() {
-			ui.label.MaxLen, ui.detail.MaxLen = 58, 100
-			ui.label.SetText(node.Label)
-			ui.detail.SetText(node.Detail)
-			ui.editing, ui.err = node.ID, ""
-		})
-	}
-	save := func() {
-		label, detail := strings.TrimSpace(ui.label.Text()), strings.TrimSpace(ui.detail.Text())
-		if !boardText(label, 58, false) || !boardText(detail, 100, true) {
-			ui.err = "Preencha um título válido para o nó."
-			return
-		}
-		previous := b.clone()
-		ui.undo = &previous
-		b.Nodes[i].Label, b.Nodes[i].Detail = label, detail
-		ui.editing, ui.err = "", ""
-		s.save()
-	}
-	return func(g ctx) dim {
-		return (layout.Flex{Alignment: layout.Middle}).Layout(g,
-			layout.Flexed(1, s.boardEditor(&ui.label, "Título do nó", "Título", 58, save)),
-			layout.Rigid(gap(5)),
-			layout.Flexed(1, s.boardEditor(&ui.detail, "Detalhe do nó", "Detalhe", 100, save)),
-			layout.Rigid(gap(5)),
-			layout.Rigid(s.button("board-node-save", "Salvar", "", outlineButton, save)),
-			layout.Rigid(s.button("board-node-cancel", "Cancelar", "", quietButton, func() { ui.editing, ui.err = "", "" })))
-	}
 }
