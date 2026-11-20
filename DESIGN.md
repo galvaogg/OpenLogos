@@ -10,5 +10,6 @@ O estúdio começa no chat de estudo. A barra lateral dá acesso a pastas, notas
 - Os pontos reaparecem no ícone do app e inspiram os segmentos de navegação da lição. Os controles usam contorno e preenchimento para diferenciar foco, seleção e passagem do ponteiro.
 - O compositor e o editor de notas usam gradiente e reflexo de borda renderizados pelo Gio. A navegação desliza o card no sentido da sequência. Dicas e feedback têm entradas curtas. A configuração de animações do Windows desativa esses movimentos.
 - Em janelas estreitas, o painel direito sai de cena e a navegação por cards passa para a área central.
+- Nos quadros visuais, a maior parte da janela fica para o diagrama. O fundo pontilhado acompanha a navegação. Cor, título e detalhe distinguem os tipos de nó. O campo abaixo do quadro recebe os pedidos ao agente e dá lugar aos controles de revisão quando há uma proposta.
 
 As cores, os controles e o mascote são definidos em `style_windows.go`. O ícone em `assets/openlogos.ico` está embutido no executável x64.
