@@ -15,12 +15,25 @@ Instale um dos CLIs e entre com sua conta no terminal. No app, clique no nome do
 
 O app usa a sessão local e a geração consome a cota da assinatura. As lições de exemplo, a leitura e a exportação funcionam offline.
 
-## Estudos e Markdown
+## Chat de estudo
 
-- **Novo estudo** cria uma lição sobre o assunto que você descreveu.
+- Escreva um assunto ou digite `/` no **Chat de estudo** para abrir o menu. Cada pedido gera uma lição com leitura, prática e resumo.
+
+| Comando | Objetivo | Exemplo |
+| --- | --- | --- |
+| `/licao` | Aprender do começo | `/licao fases da Lua` |
+| `/aprofundar` | Explorar relações e casos-limite | `/aprofundar efeitos das marés` |
+| `/praticar` | Aplicar o conteúdo em exercícios | `/praticar frações equivalentes` |
+| `/revisar` | Retomar conceitos e erros comuns | `/revisar leis de Newton` |
+
+## Pastas, notas e Markdown
+
+- Em **Pastas de estudo**, crie e renomeie pastas da biblioteca. Abra uma pasta para ver as lições reunidas ou iniciar um estudo com esse destino. No leitor, use o controle de pasta para mover a lição e conservar seu progresso.
+- Em cada card, abra **Ver dica** ou **Pensar além** antes de responder ou avançar. Use **Escrever nota** para registrar suas ideias. O app salva as notas neste dispositivo. **Minhas notas** reabre o card de origem.
+- **Aprofundar com IA**, no card, prepara um novo pedido com o trecho de estudo e a nota daquele card, quando houver. O anexo aparece no chat e pode ser removido antes do envio.
 - **Arquivos de estudo** lista os arquivos `.md` em `Documentos\OpenLogos\Estudos`. Abra a pasta pelo app para editar ou adicionar anotações no seu editor. Atualize a lista e selecione o arquivo para anexá-lo.
-- **Exportar Markdown**, dentro de uma lição, salva os cards, exercícios, gabarito e bibliografia na pasta Estudos. Edições anteriores são preservadas quando você exporta novamente.
-- O assunto e o Markdown selecionado são enviados ao agente ao clicar em **Criar lição**. A biblioteca, o progresso e as preferências ficam em `%APPDATA%\OpenLogos\library.json`.
+- **Exportar Markdown** salva a lição, as dicas, o gabarito e a bibliografia na pasta Estudos. Cada exportação gera um arquivo e preserva edições anteriores.
+- **Criar lição** envia o pedido e os anexos visíveis ao agente. Biblioteca, pastas, notas, progresso e preferências ficam em `%APPDATA%\OpenLogos\library.json`. A conversa recente fica disponível enquanto o app está aberto.
 
 ## Compilar
 
