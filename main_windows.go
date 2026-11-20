@@ -373,6 +373,9 @@ func (s *studio) goTo(page string) {
 		if s.page == "reader" {
 			s.flushReaderNote()
 		}
+		if s.page == "notes" {
+			s.notesIndex = nil
+		}
 		s.resetBody = true
 	}
 	s.page = page

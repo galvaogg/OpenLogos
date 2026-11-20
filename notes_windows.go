@@ -28,6 +28,7 @@ type readerState struct {
 	noteMotion time.Time
 	noteDue    time.Time
 	noteEditor widget.Editor
+	notesIndex []view
 }
 
 func (s *studio) loadReaderCard(l Lesson, p *Progress) {
@@ -128,6 +129,9 @@ func (s *studio) layoutNoteEditor(g ctx) dim {
 }
 
 func (s *studio) notesView() []view {
+	if s.notesIndex != nil {
+		return s.notesIndex
+	}
 	items := []view{gap(24), s.title("Minhas notas", 34), gap(14)}
 	for _, lessons := range [][]Lesson{s.lib.Generated, s.samples} {
 		for _, l := range lessons {
@@ -149,7 +153,8 @@ func (s *studio) notesView() []view {
 				return s.button("notes-study", "Ir ao estúdio", "right", outlineButton, func() { s.goTo("home") })(g)
 			})
 	}
-	return append(items, gap(24))
+	s.notesIndex = append(items, gap(24))
+	return s.notesIndex
 }
 
 func (s *studio) noteLinks(l Lesson, p *Progress, scope string) []view {

@@ -26,6 +26,11 @@ type boardCanvas struct {
 	scale, dpi float32
 	refit      bool
 	drag       boardDrag
+	gridOps    op.Ops
+	gridCall   op.CallOp
+	gridSize   image.Point
+	gridStep   float64
+	gridDPI    float32
 }
 
 type boardDrag struct {
@@ -299,20 +304,29 @@ func (c *boardCanvas) grid(g ctx) {
 	}
 	x0 := math.Mod(float64(c.origin.X), step)
 	y0 := math.Mod(float64(c.origin.Y), step)
-	r := .8 * c.dpi
-	var path clip.Path
-	path.Begin(g.Ops)
-	for y := y0; y < float64(c.size.Y); y += step {
-		for x := x0; x < float64(c.size.X); x += step {
-			p := f32.Pt(float32(x), float32(y))
-			path.MoveTo(p.Add(f32.Pt(0, -r)))
-			path.LineTo(p.Add(f32.Pt(r, 0)))
-			path.LineTo(p.Add(f32.Pt(0, r)))
-			path.LineTo(p.Add(f32.Pt(-r, 0)))
-			path.Close()
+	if c.gridSize != c.size || c.gridStep != step || c.gridDPI != c.dpi {
+		c.gridSize, c.gridStep, c.gridDPI = c.size, step, c.dpi
+		c.gridOps.Reset()
+		record := op.Record(&c.gridOps)
+		r := .8 * c.dpi
+		var path clip.Path
+		path.Begin(&c.gridOps)
+		for y := -step; y < float64(c.size.Y)+step; y += step {
+			for x := -step; x < float64(c.size.X)+step; x += step {
+				p := f32.Pt(float32(x), float32(y))
+				path.MoveTo(p.Add(f32.Pt(0, -r)))
+				path.LineTo(p.Add(f32.Pt(r, 0)))
+				path.LineTo(p.Add(f32.Pt(0, r)))
+				path.LineTo(p.Add(f32.Pt(-r, 0)))
+				path.Close()
+			}
 		}
+		paint.FillShape(&c.gridOps, hex(0x46516b), clip.Outline{Path: path.End()}.Op())
+		c.gridCall = record.Stop()
 	}
-	paint.FillShape(g.Ops, hex(0x46516b), clip.Outline{Path: path.End()}.Op())
+	offset := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(x0), float32(y0)))).Push(g.Ops)
+	c.gridCall.Add(g.Ops)
+	offset.Pop()
 }
 
 func canvasConnector(a, z f32.Point, scale float32) (f32.Point, f32.Point, bool) {
