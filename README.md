@@ -9,20 +9,34 @@
 </p>
 
 <p align="center">
-  <strong>Windows 11</strong> · Go + Gio · Codex e Claude Code
+  <strong><a href="https://github.com/galvaogg/OpenLogos/releases/latest/download/OpenLogos.exe">Baixar para Windows 11 x64</a></strong> · <a href="https://github.com/galvaogg/OpenLogos/releases">Versões</a>
 </p>
 
 <p align="center">
-  <img src="docs/media/quadro.webp" alt="Quadro visual do OpenLogos com sete nós conectados sobre uma investigação, controles de zoom e campo de pedidos ao agente" width="1100">
+  <img src="docs/media/quadro.webp" alt="Quadro de estudo no OpenLogos com nós conectados, ferramentas para adicionar formas e controles de zoom" width="1100">
 </p>
+
+## Começar
+
+Baixe e abra `OpenLogos.exe` no Windows 11 x64. O aplicativo é portátil. As lições de exemplo, a edição manual e a exportação funcionam offline.
+
+Para gerar lições e quadros, instale um dos CLIs, faça login no terminal e escolha o agente no canto superior direito do app.
+
+| Agente | Login |
+| --- | --- |
+| [Codex](https://developers.openai.com/codex/cli) | `codex login` com conta ChatGPT |
+| [Claude Code](https://code.claude.com/docs/en/setup) | `claude auth login` com assinatura Claude |
+
+O app usa a sessão existente do CLI e consome a cota da assinatura. Quando você solicita uma geração, o agente recebe o pedido, os anexos visíveis e o quadro em revisão. Quadros, notas, pastas, preferências e progresso ficam em `%APPDATA%\OpenLogos\library.json`.
 
 ## Quadros visuais
 
-Abra **Quadros visuais** e escolha **Mapa mental**, **Fluxograma** ou **Linha do tempo**. Escreva um pedido ou use **Criar exemplo offline** para conhecer o quadro.
+Abra **Quadros visuais** e escolha **Mapa mental**, **Fluxograma** ou **Linha do tempo**. Comece com **Novo quadro em branco**, descreva o quadro que a IA deve gerar ou use **Criar exemplo offline**.
 
-- Arraste os nós, mova a área do quadro e use o zoom. Selecione um nó para editar o título e o detalhe.
-- Peça uma mudança ao agente, como “Inclua um exemplo concreto abaixo de Hipótese”. Revise a proposta no quadro e escolha **Aplicar proposta** ou **Descartar**. **Desfazer** recupera a versão anterior à última alteração aplicada, edição de texto ou reorganização.
-- Use **Exportar** para salvar em `Documentos\OpenLogos\Estudos`. O arquivo `.excalidraw` abre no Excalidraw com formas, textos e conexões editáveis. [Formato de cena do Excalidraw](https://plus.excalidraw.com/docs/sdk/codebase/json-schema)
+- Adicione retângulos, elipses, losangos e textos avulsos. Arraste para posicionar e selecione para editar. Para criar uma seta, selecione o nó de origem, clique em **Conectar** e escolha o destino. Use **Conexões** para editar os rótulos e remover setas.
+- Use **Enquadrar** para ver o mapa, **Focar nó** para ler um elemento selecionado e **Desfazer** para voltar uma edição. O app salva o quadro ao concluir cada alteração e permite reabri-lo em **Quadros visuais**.
+- Peça uma mudança ao agente, como “Inclua um exemplo concreto abaixo de Hipótese”. Revise e escolha **Aplicar proposta** ou **Descartar**.
+- Use **Exportar** para salvar em `Documentos\OpenLogos\Estudos`. Abra o arquivo `.excalidraw` no Excalidraw para editar formas, textos e setas. [Formato de cena do Excalidraw](https://plus.excalidraw.com/docs/sdk/codebase/json-schema)
 
 ## Estudo e revisão
 
@@ -45,19 +59,22 @@ Digite `/` para ver o menu ou envie um pedido direto.
 | `/aprofundar` | `/aprofundar por que azul e vermelho aparecem no céu` |
 | `/praticar` | `/praticar frações equivalentes` |
 | `/revisar` | `/revisar leis de Newton` |
+| `/questoes` | `/questoes questões do ENEM sobre probabilidade` |
 
-## Rodar no Windows
+### Buscar questões no Google
 
-Abra `dist\OpenLogos.exe` após compilar. Para gerar com IA, instale um dos CLIs, faça login no terminal e escolha o agente no canto superior direito do app.
+Configure o Google Agent Search para acervos públicos e use `/questoes` ou um pedido como “Busque questões de probabilidade do ENEM”. O app mostra a origem de cada exercício e inclui links confirmados no Markdown exportado. [Configurar a busca Google](docs/busca-google.md)
 
-| Agente | Login |
+**Arquivos de estudo** abre os arquivos Markdown de `Documentos\OpenLogos\Estudos`. Selecione um arquivo para anexá-lo ao chat. **Exportar Markdown**, no leitor, salva leitura, dicas, gabarito e referências. Cada exportação gera uma cópia.
+
+## Plataformas
+
+| Plataforma | Disponibilidade |
 | --- | --- |
-| [Codex](https://developers.openai.com/codex/cli) | `codex login` com conta ChatGPT |
-| [Claude Code](https://code.claude.com/docs/en/setup) | `claude auth login` com assinatura Claude |
+| Windows 11 x64 | Executável portátil testado e disponível no GitHub Releases. |
+| macOS e Linux | A interface e a entrada do app são específicas do Windows. Os builds dependem de um port. |
 
-O app usa a sessão existente do CLI e consome a cota da assinatura. O pedido, os anexos visíveis e o quadro em revisão só são enviados ao agente ao solicitar geração. Quadros salvos, notas, pastas, preferências e progresso ficam em `%APPDATA%\OpenLogos\library.json`. Os exemplos, a edição do quadro e a exportação funcionam offline.
-
-### Compilar
+## Compilar no Windows
 
 Use Go 1.26.3 no Windows.
 
@@ -66,4 +83,4 @@ go test ./...
 go build -trimpath -ldflags '-H=windowsgui -s -w' -o dist/OpenLogos.exe .
 ```
 
-**Arquivos de estudo** abre os arquivos Markdown de `Documentos\OpenLogos\Estudos`. Selecione um arquivo para anexá-lo ao chat. **Exportar Markdown**, no leitor, salva leitura, dicas, gabarito e referências. Cada exportação gera uma cópia.
+[Medições e validação da v0.1.0](docs/validacao-v0.1.0.md)
