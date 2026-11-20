@@ -46,6 +46,9 @@ func exportLessonMarkdown(dir string, l Lesson) (string, error) {
 		if card.Body != "" {
 			fmt.Fprintf(&markdown, "%s\n\n", card.Body)
 		}
+		if card.Hint != "" {
+			fmt.Fprintf(&markdown, "> **Dica**  %s\n\n", card.Hint)
+		}
 		if card.Question == "" {
 			continue
 		}

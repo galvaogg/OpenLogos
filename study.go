@@ -35,6 +35,7 @@ type Card struct {
 	Options     []string `json:"options"`
 	Correct     int      `json:"correct"`
 	Explanation string   `json:"explanation"`
+	Hint        string   `json:"hint,omitempty"`
 }
 
 type Progress struct {
@@ -42,6 +43,7 @@ type Progress struct {
 	Visited  map[int]bool
 	Answers  map[int]int
 	Reviewed bool
+	Notes    map[int]string `json:",omitempty"`
 }
 
 type Library struct {
@@ -49,6 +51,7 @@ type Library struct {
 	Progress  map[string]*Progress
 	Provider  string
 	Feedback  string
+	Folders   []StudyFolder `json:",omitempty"`
 }
 
 func validateLesson(l Lesson) error {
@@ -60,6 +63,9 @@ func validateLesson(l Lesson) error {
 	for _, c := range l.Cards {
 		if !validText(c.Title, 100) {
 			return errors.New("Um card retornou sem título válido.")
+		}
+		if c.Hint != "" && (!utf8.ValidString(c.Hint) || !validText(c.Hint, 400)) {
+			return errors.New("Um card retornou com uma dica fora do formato esperado.")
 		}
 		if c.Question == "" {
 			if !validText(c.Body, 1800) || len(c.Options) != 0 {
@@ -132,6 +138,9 @@ func loadLibrary(path string) (Library, error) {
 		seen[item.ID] = true
 	}
 	l.Generated = saved.Generated
+	if err := l.restoreFolders(saved.Folders); err != nil {
+		return l, err
+	}
 	return l, nil
 }
 
