@@ -52,12 +52,13 @@ func TestRestrictCodexCatalog(t *testing.T) {
 
 func TestClaudeLessonPayload(t *testing.T) {
 	result := []byte(`{"is_error":false,"structured_output":{
-  "title":"Lição","cards":[{"title":"Leitura"}],
-  "exercise1":{"title":"Prática 1","question":"Primeira pergunta?"},
+  "title":"Lição","cards":[{"title":"Leitura","hint":"Explique o conceito."}],
+  "exercise1":{"title":"Prática 1","question":"Primeira pergunta?","hint":"Pense na causa."},
   "exercise2":{"title":"Prática 2","question":"Segunda pergunta?"}
 }}`)
 	lesson, isError, err := claudeLessonPayload(result)
-	if isError || err != nil || len(lesson.Cards) != 3 || lesson.Cards[1].Question != "Primeira pergunta?" {
+	if isError || err != nil || len(lesson.Cards) != 3 || lesson.Cards[1].Question != "Primeira pergunta?" ||
+		lesson.Cards[0].Hint != "Explique o conceito." || lesson.Cards[1].Hint != "Pense na causa." {
 		t.Fatalf("did not join readings and exercises in order: %+v, %v", lesson, err)
 	}
 }
@@ -74,7 +75,11 @@ func TestProviderLive(t *testing.T) {
 	} else {
 		t.Log(status)
 	}
-	lesson, err := generateLesson(ctx, provider, "Por que ocorrem as fases da Lua?", "# Anotação\nA metade iluminada aponta para o Sol.")
+	request, err := parseStudyRequest("/praticar Por que ocorrem as fases da Lua?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lesson, err := generateLesson(ctx, provider, request, "# Anotação\nA metade iluminada aponta para o Sol.")
 	if err != nil {
 		t.Fatal(err)
 	}

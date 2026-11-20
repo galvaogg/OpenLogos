@@ -41,8 +41,13 @@ func (s *studio) sidebar(g ctx) dim {
 					if s.page == "home" {
 						a = activeButton
 					}
-					return column(g, wide(s.button("home", "Novo estudo", "plus", a, func() { s.goTo("home") })),
-						gap(24), padding(0, 11, 7, s.label("Biblioteca", 13, subtle, font.SemiBold)))
+					notes := quietButton
+					if s.page == "notes" {
+						notes = activeButton
+					}
+					return column(g, wide(s.button("home", "Chat de estudo", "plus", a, func() { s.goTo("home") })),
+						gap(4), s.foldersNav(), gap(4), wide(s.button("notes", "Minhas notas", "book", notes, func() { s.goTo("notes") })),
+						gap(22), padding(0, 11, 7, s.label("Acesso rápido", 13, subtle, font.SemiBold)))
 				}
 				items := s.lib.Generated
 				isSample := i > len(items)
@@ -73,18 +78,28 @@ func (s *studio) sidebar(g ctx) dim {
 }
 
 func (s *studio) workspace(g ctx, wideRail bool) dim {
-	title := "Estúdio"
-	if s.page == "reader" {
+	title := "Estúdio  /  Chat"
+	switch s.page {
+	case "reader":
 		title = "Biblioteca  /  " + s.lesson.Topic
-	} else if s.page == "files" {
+		if folder := s.lib.folderFor(s.lesson.ID); folder != nil {
+			title = folder.Name + "  /  " + s.lesson.Topic
+		}
+	case "files":
 		title = "Estúdio  /  Arquivos"
+	case "folders":
+		title = "Biblioteca  /  Pastas"
+	case "notes":
+		title = "Biblioteca  /  Notas"
+	case "settings":
+		title = "Estúdio  /  Preferências"
 	}
 	return (layout.Flex{Axis: layout.Vertical}).Layout(g,
 		layout.Rigid(wide(func(g ctx) dim {
 			return column(g, padding(10, 25, 10, func(g ctx) dim {
 				return (layout.Flex{Alignment: layout.Middle}).Layout(g,
 					layout.Flexed(1, s.label(title, 14, muted, font.SemiBold)),
-					layout.Rigid(s.button("provider-top", s.lib.Provider, "terminal", outlineButton, func() {
+					layout.Rigid(s.button("provider-top", s.lib.Provider, "terminal", glassButton, func() {
 						if s.page == "settings" {
 							s.goTo("home")
 						} else {
@@ -97,6 +112,10 @@ func (s *studio) workspace(g ctx, wideRail bool) dim {
 		layout.Flexed(1, func(g ctx) dim {
 			var children []layout.FlexChild
 			children = append(children, layout.Flexed(1, func(g ctx) dim {
+				if s.resetBody {
+					s.body.Position = layout.Position{}
+					s.resetBody = false
+				}
 				var content []view
 				switch s.page {
 				case "reader":
@@ -105,6 +124,10 @@ func (s *studio) workspace(g ctx, wideRail bool) dim {
 					content = []view{s.settings}
 				case "files":
 					content = s.files()
+				case "folders":
+					content = s.foldersView()
+				case "notes":
+					content = s.notesView()
 				default:
 					content = s.home()
 				}
@@ -136,13 +159,7 @@ func (s *studio) home() []view {
 	if s.generationError != "" {
 		items = append(items, s.label(s.generationError, 14, bad, font.SemiBold), gap(18))
 	}
-	if len(s.lib.Generated) > 0 {
-		items = append(items, s.label("Seus estudos", 20, ink, font.SemiBold), gap(10))
-		for _, l := range s.lib.Generated {
-			items = append(items, s.lessonTile(l, false), gap(8))
-		}
-		items = append(items, gap(18))
-	}
+	items = append(items, s.chatHistory()...)
 	items = append(items, s.label("Experimente uma lição", 20, ink, font.SemiBold),
 		gap(5), s.label("Três estudos de metafísica disponíveis offline.", 14, muted, font.Normal), gap(13))
 	for _, l := range s.samples {
@@ -152,8 +169,8 @@ func (s *studio) home() []view {
 }
 
 func (s *studio) composer(g ctx) dim {
-	working := s.stop != nil
 	focused := g.Source.Focused(&s.editor)
+	s.editor.ReadOnly = s.stop != nil
 	for {
 		event, ok := s.editor.Update(g)
 		if !ok {
@@ -163,16 +180,24 @@ func (s *studio) composer(g ctx) dim {
 			s.generate()
 		}
 	}
-	return box(g, hex(0x1a1d29), hex(0x353b52), 16, wide(padding(22, 22, 20, func(g ctx) dim {
+	working := s.stop != nil
+	return glass(g, 16, wide(padding(22, 22, 20, func(g ctx) dim {
 		return column(g, func(g ctx) dim {
 			return (layout.Flex{Alignment: layout.Middle}).Layout(g,
 				layout.Flexed(1, func(g ctx) dim {
-					return column(g, s.title("O que você quer\naprender hoje?", 42), gap(11),
-						s.label("Escolha um tema. A IA monta uma lição com cards e exercícios.", 15, muted, font.Normal))
+					return column(g, s.title("O que vamos estudar?", 40), gap(10),
+						s.label("Escreva um tema ou use / para escolher como estudar.", 15, muted, font.Normal))
 				}),
 				layout.Rigid(func(g ctx) dim { return mascot(g, 112, 126, focused, working) }),
 			)
-		}, gap(16), s.promptField, gap(11), func(g ctx) dim {
+		}, gap(16), s.newStudyFolderHint(), func(g ctx) dim {
+			if s.cardSource.label == "" {
+				return dim{}
+			}
+			return padding(0, 0, 8, s.button("clear-card-source", s.cardSource.label+" · Remover", "book", activeButton, func() {
+				s.cardSource = studyAttachment{}
+			}))(g)
+		}, s.promptField, s.commandMenu, gap(11), func(g ctx) dim {
 			if working {
 				topic := s.activeTopic
 				return (layout.Flex{Alignment: layout.Middle}).Layout(g,
@@ -206,12 +231,32 @@ func (s *studio) promptField(g ctx) dim {
 	if g.Source.Focused(&s.editor) {
 		border = accent
 	}
-	return box(g, canvas, border, 9, wide(padding(13, 14, 13, func(g ctx) dim {
-		e := material.Editor(s.theme, &s.editor, "Ex.: por que o tempo passa mais devagar perto de um buraco negro?")
-		e.TextSize, e.HintColor, e.Color = 15, subtle, ink
-		semantic.LabelOp("Assunto da lição").Add(g.Ops)
-		return e.Layout(g)
+	return box(g, canvas, border, 10, wide(padding(4, 5, 4, func(g ctx) dim {
+		a := outlineButton
+		if s.showCommands {
+			a = activeButton
+		}
+		var openCommands func()
+		if s.stop == nil {
+			openCommands = func() { s.showCommands = !s.showCommands }
+		}
+		return (layout.Flex{Alignment: layout.Middle}).Layout(g,
+			layout.Rigid(s.controlSlash(a, openCommands)), layout.Rigid(gap(9)),
+			layout.Flexed(1, padding(7, 0, 7, func(g ctx) dim {
+				e := material.Editor(s.theme, &s.editor, "Ex.: /praticar fases da Lua")
+				e.TextSize, e.HintColor, e.Color = 15, subtle, ink
+				semantic.LabelOp("Mensagem para a IA de estudo").Add(g.Ops)
+				return e.Layout(g)
+			})),
+		)
 	})))
+}
+
+func (s *studio) controlSlash(a appearance, action func()) view {
+	return func(g ctx) dim {
+		return s.control(g, "show-commands", "Comandos de estudo", a, action,
+			padding(5, 10, 5, s.label("/", 16, a.fg, font.Bold)))
+	}
 }
 
 func (s *studio) lessonTile(l Lesson, isSample bool) view {

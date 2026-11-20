@@ -31,6 +31,7 @@ type result struct {
 	provider string
 	status   string
 	lesson   Lesson
+	draft    generationDraft
 	err      error
 }
 
@@ -56,6 +57,7 @@ type studio struct {
 	editor             widget.Editor
 	clicks             map[string]*studioButton
 	body, rail, detail layout.List
+	resetBody          bool
 	connections        map[string]connection
 	generationError    string
 	activeTopic        string
@@ -64,6 +66,11 @@ type studio struct {
 	studyError         string
 	note               string
 	notice             string
+	foldersUI          folderState
+	readerState
+	cardSource   studyAttachment
+	showCommands bool
+	chat         []studyTurn
 }
 
 func main() {
@@ -129,9 +136,11 @@ func run() error {
 				styleWindow(e.HWND)
 			}
 		case app.DestroyEvent:
+			s.flushReaderNote()
 			return e.Err
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
+			s.tickReaderNote(gtx)
 			s.collect()
 			paint.Fill(gtx.Ops, canvas)
 			s.layout(gtx)
@@ -214,35 +223,40 @@ func (s *studio) generate() {
 	if s.stop != nil {
 		return
 	}
-	topic := strings.TrimSpace(s.editor.Text())
-	if !validText(topic, 240) {
-		s.generationError = "Digite o assunto para criar uma lição."
+	draft := s.currentDraft()
+	request, err := parseStudyRequest(draft.prompt)
+	if err != nil {
+		s.generationError = err.Error()
 		return
 	}
 	p := s.lib.Provider
-	notes := ""
-	if s.note != "" {
-		var err error
-		notes, err = readStudyMarkdown(s.studiesDir, s.note)
+	var notes []string
+	if draft.file != "" {
+		markdown, err := readStudyMarkdown(s.studiesDir, draft.file)
 		if err != nil {
 			s.generationError = err.Error()
 			return
 		}
+		notes = append(notes, markdown)
 	}
-	s.generationError, s.activeTopic = "", topic
+	if draft.card.text != "" {
+		notes = append(notes, draft.card.text)
+	}
+	s.generationError, s.activeTopic = "", request.topic
+	s.showCommands = false
 	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Minute)
 	s.stop = cancel
 	s.work.Add(1)
 	go func() {
 		defer s.work.Done()
-		lesson, err := generateLesson(ctx, p, topic, notes)
+		lesson, err := generateLesson(ctx, p, request, notes...)
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			err = errors.New("O agente demorou demais. Tente novamente.")
 		}
-		s.send(result{lesson: lesson, err: err})
+		s.send(result{lesson: lesson, draft: draft, err: err})
 	}()
 }
 
@@ -269,10 +283,21 @@ func (s *studio) collect() {
 				}
 				continue
 			}
-			s.editor.SetText("")
-			s.note = ""
-			if s.page == "home" {
-				s.open(s.lib.Generated[0])
+			lesson := s.lib.Generated[0]
+			if r.draft.folder != "" {
+				_ = s.lib.moveLesson(lesson.ID, r.draft.folder)
+			}
+			s.chat = append([]studyTurn{{prompt: r.draft.prompt, lesson: lesson}}, s.chat...)
+			s.chat = s.chat[:min(4, len(s.chat))]
+			sameDraft := s.currentDraft() == r.draft
+			if sameDraft {
+				s.editor.SetText("")
+				s.note = ""
+				s.cardSource = studyAttachment{}
+				s.foldersUI.destination = ""
+			}
+			if s.page == "home" && sameDraft {
+				s.open(lesson)
 			} else {
 				s.save()
 			}
@@ -334,7 +359,10 @@ func (s *studio) save() {
 
 func (s *studio) goTo(page string) {
 	if s.page != page {
-		s.body.Position = layout.Position{}
+		if s.page == "reader" {
+			s.flushReaderNote()
+		}
+		s.resetBody = true
 	}
 	s.page = page
 }
@@ -351,11 +379,12 @@ func (s *studio) jump(index int) {
 	l := *s.lesson
 	p := s.lib.progress(l)
 	p.Cursor = max(0, min(index, len(l.Cards)))
+	s.loadReaderCard(l, p)
 	if p.Cursor < len(l.Cards) {
 		p.Visited[p.Cursor] = true
 	} else {
 		p.Reviewed = true
 	}
-	s.body.Position = layout.Position{}
+	s.resetBody = true
 	s.save()
 }
