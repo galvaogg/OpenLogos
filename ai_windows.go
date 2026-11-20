@@ -85,61 +85,20 @@ func generateLesson(ctx context.Context, provider string, request studyRequest, 
 	if !utf8.ValidString(material) || utf8.RuneCountInString(material) > 32000 {
 		return Lesson{}, errors.New("O material de estudo precisa estar em UTF-8 e ter até 32.000 caracteres.")
 	}
-	binary, err := providerExecutable(provider)
-	if err != nil {
-		return Lesson{}, err
-	}
-	dir, err := os.MkdirTemp("", "openlogos-ai-")
-	if err != nil {
-		return Lesson{}, errors.New("Não deu para criar a pasta temporária da IA.")
-	}
-	defer os.RemoveAll(dir)
-	if _, err := checkProviderStatus(ctx, provider, binary, dir); err != nil {
-		return Lesson{}, err
-	}
-
 	input := map[string]string{"assunto": topic}
 	if strings.TrimSpace(material) != "" {
 		input["material"] = material
 	}
 	subject, _ := json.Marshal(input)
 	instructions := lessonInstructions + "\nObjetivo didático: " + request.guidance()
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-	var args []string
-	switch provider {
-	case codex:
-		schema := filepath.Join(dir, "lesson.schema.json")
-		if err := os.WriteFile(schema, []byte(lessonSchema), 0600); err != nil {
-			return Lesson{}, errors.New("Não deu para preparar o formato da lição.")
-		}
-		catalog, err := writeCodexCatalog(ctx, binary, dir)
-		if err != nil {
-			return Lesson{}, err
-		}
-		args = []string{
-			"-a", "never", "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
-			"-c", `forced_login_method="chatgpt"`, "-c", `model_provider="openai"`,
-			"-s", "read-only", "-c", fmt.Sprintf("model_catalog_json=%q", catalog),
-			"-c", `web_search="disabled"`, "-c", `mcp_servers={}`, "-c", "project_doc_max_bytes=0",
-			"--disable", "shell_tool", "--disable", "shell_snapshot", "--disable", "hooks",
-			"--disable", "plugins", "--disable", "apps", "--disable", "computer_use",
-			"--disable", "browser_use", "--disable", "image_generation", "--disable", "view_image",
-			"--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "request_permissions_tool",
-			"--color", "never", "--json", "--output-schema", schema, "-",
-		}
-	case claude:
+	schema := lessonSchema
+	if provider == claude {
 		instructions += "\nNeste formato, coloque somente a leitura em cards (title, body e hint). Preencha as duas questões de prática em exercise1 e exercise2."
-		args = append(append([]string{}, claudeRestriction...),
-			"--mcp-config", `{"mcpServers":{}}`,
-			"--print", "--no-session-persistence", "--permission-mode", "dontAsk", "--permission-prompts", "none",
-			"--tools", "", "--disable-slash-commands", "--no-chrome", "--input-format", "text",
-			"--output-format", "json", "--json-schema", claudeLessonSchema)
+		schema = claudeLessonSchema
 	}
-
-	stdout, stderr, err := runProvider(ctx, binary, dir, instructions+"\n\n"+string(subject), args...)
+	stdout, stderr, err := runStructuredProvider(ctx, provider, schema, instructions+"\n\n"+string(subject))
 	if err != nil {
-		return Lesson{}, providerError(ctx, provider, stdout, stderr, err)
+		return Lesson{}, err
 	}
 	var lesson Lesson
 	switch provider {
@@ -166,19 +125,82 @@ func generateLesson(ctx context.Context, provider string, request studyRequest, 
 	return lesson, nil
 }
 
+func runStructuredProvider(ctx context.Context, provider, schema, prompt string) ([]byte, []byte, error) {
+	binary, err := providerExecutable(provider)
+	if err != nil {
+		return nil, nil, err
+	}
+	dir, err := os.MkdirTemp("", "openlogos-ai-")
+	if err != nil {
+		return nil, nil, errors.New("Não deu para criar a pasta temporária da IA.")
+	}
+	defer os.RemoveAll(dir)
+	if _, err := checkProviderStatus(ctx, provider, binary, dir); err != nil {
+		return nil, nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	var args []string
+	switch provider {
+	case codex:
+		schemaPath := filepath.Join(dir, "output.schema.json")
+		if err := os.WriteFile(schemaPath, []byte(schema), 0600); err != nil {
+			return nil, nil, errors.New("Não deu para preparar o formato da resposta da IA.")
+		}
+		catalog, err := writeCodexCatalog(ctx, binary, dir)
+		if err != nil {
+			return nil, nil, err
+		}
+		args = []string{
+			"-a", "never", "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
+			"-c", `forced_login_method="chatgpt"`, "-c", `model_provider="openai"`,
+			"-s", "read-only", "-c", fmt.Sprintf("model_catalog_json=%q", catalog),
+			"-c", `web_search="disabled"`, "-c", `mcp_servers={}`, "-c", "project_doc_max_bytes=0",
+			"--disable", "shell_tool", "--disable", "shell_snapshot", "--disable", "hooks",
+			"--disable", "plugins", "--disable", "apps", "--disable", "computer_use",
+			"--disable", "browser_use", "--disable", "image_generation", "--disable", "view_image",
+			"--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "request_permissions_tool",
+			"--color", "never", "--json", "--output-schema", schemaPath, "-",
+		}
+	case claude:
+		args = append(append([]string{}, claudeRestriction...),
+			"--mcp-config", `{"mcpServers":{}}`,
+			"--print", "--no-session-persistence", "--permission-mode", "dontAsk", "--permission-prompts", "none",
+			"--tools", "", "--disable-slash-commands", "--no-chrome", "--input-format", "text",
+			"--output-format", "json", "--json-schema", schema)
+	}
+
+	stdout, stderr, err := runProvider(ctx, binary, dir, prompt, args...)
+	if err != nil {
+		return nil, nil, providerError(ctx, provider, stdout, stderr, err)
+	}
+	return stdout, stderr, nil
+}
+
 func claudeLessonPayload(output []byte) (Lesson, bool, error) {
+	payload, isError, err := claudeStructuredPayload(output)
+	if err != nil || isError {
+		return Lesson{}, isError, err
+	}
 	var result struct {
-		IsError bool `json:"is_error"`
-		Payload struct {
-			Lesson
-			FirstExercise  Card `json:"exercise1"`
-			SecondExercise Card `json:"exercise2"`
-		} `json:"structured_output"`
+		Lesson
+		FirstExercise  Card `json:"exercise1"`
+		SecondExercise Card `json:"exercise2"`
+	}
+	err = json.Unmarshal(payload, &result)
+	lesson := result.Lesson
+	lesson.Cards = append(lesson.Cards, result.FirstExercise, result.SecondExercise)
+	return lesson, false, err
+}
+
+func claudeStructuredPayload(output []byte) (json.RawMessage, bool, error) {
+	var result struct {
+		IsError bool            `json:"is_error"`
+		Payload json.RawMessage `json:"structured_output"`
 	}
 	err := json.Unmarshal(output, &result)
-	lesson := result.Payload.Lesson
-	lesson.Cards = append(lesson.Cards, result.Payload.FirstExercise, result.Payload.SecondExercise)
-	return lesson, result.IsError, err
+	return result.Payload, result.IsError, err
 }
 
 func writeCodexCatalog(ctx context.Context, binary, dir string) (string, error) {

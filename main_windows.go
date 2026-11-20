@@ -32,6 +32,8 @@ type result struct {
 	status   string
 	lesson   Lesson
 	draft    generationDraft
+	board    Board
+	boardJob *boardJob
 	err      error
 }
 
@@ -71,6 +73,7 @@ type studio struct {
 	cardSource   studyAttachment
 	showCommands bool
 	chat         []studyTurn
+	boardUI      boardState
 }
 
 func main() {
@@ -242,6 +245,10 @@ func (s *studio) generate() {
 	if draft.card.text != "" {
 		notes = append(notes, draft.card.text)
 	}
+	if request.boardKind != "" {
+		s.startBoard(request.boardKind, request.topic, strings.Join(notes, "\n\n"), nil, draft)
+		return
+	}
 	s.generationError, s.activeTopic = "", request.topic
 	s.showCommands = false
 	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Minute)
@@ -274,6 +281,10 @@ func (s *studio) collect() {
 			}
 			s.stop()
 			s.stop, s.activeTopic = nil, ""
+			if r.boardJob != nil {
+				s.finishBoard(r.board, *r.boardJob, r.err)
+				continue
+			}
 			if r.err == nil {
 				r.err = s.lib.add(r.lesson)
 			}

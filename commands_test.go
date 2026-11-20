@@ -18,6 +18,15 @@ func TestParseStudyRequest(t *testing.T) {
 	}
 }
 
+func TestVisualStudyCommands(t *testing.T) {
+	for input, kind := range map[string]string{"/mapa": "mindmap", "/fluxo": "flowchart", "/linha-do-tempo": "timeline"} {
+		request, err := parseStudyRequest(input + " ciclo da água")
+		if err != nil || request.boardKind != kind || request.topic != "ciclo da água" {
+			t.Fatalf("%s: %+v, %v", input, request, err)
+		}
+	}
+}
+
 func TestStudyGuidanceUsesRegisteredCommand(t *testing.T) {
 	request := studyRequest{command: "/praticar", topic: "Frações"}
 	if request.guidance() != studyCommands[2].guidance || request.guidance() == studyCommands[0].guidance {

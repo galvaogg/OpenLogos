@@ -52,6 +52,7 @@ type Library struct {
 	Provider  string
 	Feedback  string
 	Folders   []StudyFolder `json:",omitempty"`
+	Boards    []Board       `json:",omitempty"`
 }
 
 func validateLesson(l Lesson) error {
@@ -141,6 +142,14 @@ func loadLibrary(path string) (Library, error) {
 	if err := l.restoreFolders(saved.Folders); err != nil {
 		return l, err
 	}
+	boards := make(map[string]bool, len(saved.Boards))
+	for _, board := range saved.Boards {
+		if !strings.HasPrefix(board.ID, "board-") || len(board.ID) > 64 || boards[board.ID] || validateBoard(board) != nil {
+			return l, errors.New("quadros inválidos na biblioteca local")
+		}
+		boards[board.ID] = true
+	}
+	l.Boards = saved.Boards
 	return l, nil
 }
 

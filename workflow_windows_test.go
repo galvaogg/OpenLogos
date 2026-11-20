@@ -132,4 +132,55 @@ func TestStudyWorkflowThroughGio(t *testing.T) {
 		!strings.Contains(s.cardSource.text, note) {
 		t.Fatal("follow-up did not attach the original study and note")
 	}
+
+	t.Setenv("OPENLOGOS_STUDIES_DIR", t.TempDir())
+	click("Comandos de estudo")
+	click("/mapa ·")
+	draft = s.currentDraft()
+	s.stop = func() {}
+	s.boardUI.running = true
+	s.results <- result{board: exampleBoard(), boardJob: &boardJob{origin: "home", chat: draft}}
+	frame()
+	frame()
+	current := s.lib.board(s.boardUI.id)
+	if s.page != "board" || current == nil || s.currentDraft().prompt != "" {
+		t.Fatal("the chat did not open its generated board")
+	}
+
+	proposed := current.clone()
+	proposed.Title = "Um quadro revisado"
+	s.finishBoard(proposed, boardJob{target: current.ID}, nil)
+	frame()
+	if s.boardUI.preview == nil || current.Title == proposed.Title {
+		t.Fatal("proposal overwrote the original before review")
+	}
+	click("Descartar")
+	if s.boardUI.preview != nil || current.Title == proposed.Title {
+		t.Fatal("discard changed the original")
+	}
+	s.finishBoard(proposed, boardJob{target: current.ID}, nil)
+	frame()
+	click("Aplicar proposta")
+	if s.boardUI.preview != nil || current.Title != proposed.Title {
+		t.Fatal("proposal was not applied")
+	}
+	click("Desfazer")
+	if current.Title == proposed.Title {
+		t.Fatal("undo did not restore the board")
+	}
+	click("Exportar")
+	if !strings.Contains(s.boardUI.message, ".excalidraw") || s.boardUI.err != "" {
+		t.Fatalf("export did not finish: %q, %q", s.boardUI.message, s.boardUI.err)
+	}
+	click("Quadros visuais")
+	click("Abrir quadro Como nasce")
+	if s.page != "board" || s.boardUI.id != current.ID {
+		t.Fatal("library did not reopen the saved board")
+	}
+	click("O navio de Teseu")
+	click("Criar mapa")
+	if s.page != "boards" || s.boardUI.kind != "mindmap" ||
+		!strings.Contains(s.boardUI.source.text, "Uma tábua por vez") {
+		t.Fatal("lesson did not become context for the visual agent")
+	}
 }

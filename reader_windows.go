@@ -66,7 +66,7 @@ func (s *studio) reader(wideRail bool) []view {
 		)
 	}, gap(11), rule, gap(11), func(g ctx) dim {
 		return row(g, s.button("export:"+l.ID, "Exportar Markdown", "folder", quietButton, func() { s.export(l) }),
-			gap(8), s.moveLessonButton(l))
+			gap(5), s.moveLessonButton(l), gap(5), s.button("lesson-board:"+l.ID, "Criar mapa", "spark", quietButton, func() { s.boardFromLesson(l) }))
 	})
 	if s.notice != "" {
 		items = append(items, s.label(s.notice, 13, muted, font.Normal))

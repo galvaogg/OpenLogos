@@ -45,8 +45,13 @@ func (s *studio) sidebar(g ctx) dim {
 					if s.page == "notes" {
 						notes = activeButton
 					}
+					boards := quietButton
+					if s.page == "boards" || s.page == "board" {
+						boards = activeButton
+					}
 					return column(g, wide(s.button("home", "Chat de estudo", "plus", a, func() { s.goTo("home") })),
 						gap(4), s.foldersNav(), gap(4), wide(s.button("notes", "Minhas notas", "book", notes, func() { s.goTo("notes") })),
+						gap(4), wide(s.button("boards", "Quadros visuais", "spark", boards, func() { s.goTo("boards") })),
 						gap(22), padding(0, 11, 7, s.label("Acesso rápido", 13, subtle, font.SemiBold)))
 				}
 				items := s.lib.Generated
@@ -91,6 +96,8 @@ func (s *studio) workspace(g ctx, wideRail bool) dim {
 		title = "Biblioteca  /  Pastas"
 	case "notes":
 		title = "Biblioteca  /  Notas"
+	case "boards", "board":
+		title = "Estúdio  /  Quadros"
 	case "settings":
 		title = "Estúdio  /  Preferências"
 	}
@@ -110,6 +117,9 @@ func (s *studio) workspace(g ctx, wideRail bool) dim {
 			}), rule)
 		})),
 		layout.Flexed(1, func(g ctx) dim {
+			if s.page == "board" {
+				return s.boardWorkspace(g)
+			}
 			var children []layout.FlexChild
 			children = append(children, layout.Flexed(1, func(g ctx) dim {
 				if s.resetBody {
@@ -128,6 +138,8 @@ func (s *studio) workspace(g ctx, wideRail bool) dim {
 					content = s.foldersView()
 				case "notes":
 					content = s.notesView()
+				case "boards":
+					content = s.boardHub()
 				default:
 					content = s.home()
 				}
@@ -181,6 +193,13 @@ func (s *studio) composer(g ctx) dim {
 		}
 	}
 	working := s.stop != nil
+	request, _ := parseStudyRequest(s.editor.Text())
+	folderHint := s.newStudyFolderHint()
+	actionTitle := "Criar lição"
+	if request.boardKind != "" {
+		folderHint = gap(0)
+		actionTitle = "Gerar quadro"
+	}
 	return glass(g, 16, wide(padding(22, 22, 20, func(g ctx) dim {
 		return column(g, func(g ctx) dim {
 			return (layout.Flex{Alignment: layout.Middle}).Layout(g,
@@ -190,7 +209,7 @@ func (s *studio) composer(g ctx) dim {
 				}),
 				layout.Rigid(func(g ctx) dim { return mascot(g, 112, 126, focused, working) }),
 			)
-		}, gap(16), s.newStudyFolderHint(), func(g ctx) dim {
+		}, gap(16), folderHint, func(g ctx) dim {
 			if s.cardSource.label == "" {
 				return dim{}
 			}
@@ -200,13 +219,13 @@ func (s *studio) composer(g ctx) dim {
 		}, s.promptField, s.commandMenu, gap(11), func(g ctx) dim {
 			if working {
 				topic := s.activeTopic
+				status := "Criando a lição · "
+				if s.boardUI.running {
+					status = "Gerando o quadro · "
+				}
 				return (layout.Flex{Alignment: layout.Middle}).Layout(g,
-					layout.Flexed(1, s.label("Criando a lição · "+topic, 14, accent, font.SemiBold)),
-					layout.Rigid(s.button("stop", "Cancelar", "", outlineButton, func() {
-						if s.stop != nil {
-							s.stop()
-						}
-					})),
+					layout.Flexed(1, s.label(status+topic, 14, accent, font.SemiBold)),
+					layout.Rigid(s.button("stop", "Cancelar", "", outlineButton, s.cancelStudyJob)),
 				)
 			}
 			return (layout.Flex{Alignment: layout.Middle}).Layout(g,
@@ -220,7 +239,7 @@ func (s *studio) composer(g ctx) dim {
 					})(g)
 				}),
 				layout.Rigid(gap(8)),
-				layout.Rigid(s.button("generate", "Criar lição", "spark", primaryButton, s.generate)),
+				layout.Rigid(s.button("generate", actionTitle, "spark", primaryButton, s.generate)),
 			)
 		})
 	})))

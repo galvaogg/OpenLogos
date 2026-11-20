@@ -20,8 +20,9 @@ type generationDraft struct {
 }
 
 type studyTurn struct {
-	prompt string
-	lesson Lesson
+	prompt  string
+	lesson  Lesson
+	boardID string
 }
 
 func (s *studio) currentDraft() generationDraft {
@@ -92,7 +93,7 @@ func (s *studio) commandOption(command studyCommand) view {
 			g.Execute(key.FocusCmd{Tag: &s.editor})
 		}, wide(padding(7, 9, 7, func(g ctx) dim {
 			return (layout.Flex{Alignment: layout.Middle}).Layout(g,
-				layout.Rigid(fixedWidth(115, s.label(command.name, 14, accent, font.SemiBold))),
+				layout.Rigid(fixedWidth(135, s.label(command.name, 14, accent, font.SemiBold))),
 				layout.Flexed(1, s.label(command.description, 13, muted, font.Normal)),
 			)
 		})))
@@ -105,6 +106,12 @@ func (s *studio) chatHistory() []view {
 	}
 	items := []view{s.label("Nesta conversa", 20, ink, font.SemiBold), gap(10)}
 	for _, turn := range s.chat {
+		if turn.boardID != "" {
+			if b := s.lib.board(turn.boardID); b != nil {
+				items = append(items, s.label(turn.prompt, 14, muted, font.SemiBold), gap(5), s.boardTile(*b), gap(15))
+			}
+			continue
+		}
 		items = append(items, s.label(turn.prompt, 14, muted, font.SemiBold), gap(5),
 			s.lessonTile(turn.lesson, false), gap(15))
 	}
