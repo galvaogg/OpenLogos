@@ -1,0 +1,29 @@
+{
+  "title": "Fotossíntese, respiração celular e fluxo de energia em ecossistemas",
+  "kind": "mindmap",
+  "nodes": [
+    {"id":"energia","label":"Energia nos seres vivos e nos ecossistemas","detail":"A energia luminosa é convertida em energia química, transferida nas teias e dissipada como calor.","shape":"topic"},
+    {"id":"fotossintese","label":"Fotossíntese oxigênica","detail":"A luz fornece energia para produzir compostos orgânicos a partir de CO₂, com liberação de O₂.","shape":"note"},
+    {"id":"tilacoides","label":"Tilacoides e reações dependentes de luz","detail":"Nos tilacoides, a luz impulsiona a síntese de ATP e NADPH, e a oxidação da água libera O₂.","shape":"step"},
+    {"id":"calvin","label":"Ciclo de Calvin–Benson e fixação de CO₂","detail":"No estroma, o ciclo usa ATP e NADPH para incorporar CO₂ em moléculas de gliceraldeído-3-fosfato.","shape":"step"},
+    {"id":"respiracao","label":"Respiração celular aeróbia","detail":"A oxidação da glicose fornece energia à síntese de adenosina trifosfato (ATP) e libera CO₂.","shape":"note"},
+    {"id":"glicolise","label":"Glicólise no citosol","detail":"A glicólise converte uma molécula de glicose em duas de piruvato e gera ATP e NADH.","shape":"step"},
+    {"id":"krebs","label":"Ciclo do ácido cítrico (ciclo de Krebs)","detail":"Na matriz mitocondrial, a oxidação do grupo acetil da acetil-CoA libera CO₂ e gera NADH e FADH₂.","shape":"step"},
+    {"id":"fosforilacao","label":"Cadeia respiratória e fosforilação oxidativa","detail":"O O₂ recebe elétrons e forma água, e o gradiente de prótons dirige a produção de ATP.","shape":"step"},
+    {"id":"fluxo","label":"Fluxo de energia em ecossistemas","detail":"A energia química dos produtores chega a consumidores e decompositores pela matéria orgânica.","shape":"note"},
+    {"id":"niveis-troficos","label":"Níveis tróficos e dissipação de energia","detail":"A respiração dissipa energia como calor, reduzindo a parcela disponível ao nível trófico seguinte.","shape":"note"}
+  ],
+  "edges": [
+    {"from":"energia","to":"fotossintese","label":"conversão da energia luminosa"},
+    {"from":"energia","to":"respiracao","label":"síntese de ATP"},
+    {"from":"energia","to":"fluxo","label":"transferência entre organismos"},
+    {"from":"fotossintese","to":"tilacoides","label":"reações fotoquímicas"},
+    {"from":"fotossintese","to":"calvin","label":"assimilação de carbono"},
+    {"from":"tilacoides","to":"calvin","label":"fornece ATP e NADPH"},
+    {"from":"respiracao","to":"glicolise","label":"quebra da glicose"},
+    {"from":"respiracao","to":"krebs","label":"oxidação da acetil-CoA"},
+    {"from":"respiracao","to":"fosforilacao","label":"síntese de ATP por quimiosmose"},
+    {"from":"krebs","to":"fosforilacao","label":"fornece NADH e FADH₂"},
+    {"from":"fluxo","to":"niveis-troficos","label":"transferência e perda de energia"}
+  ]
+}

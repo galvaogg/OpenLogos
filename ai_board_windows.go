@@ -35,6 +35,7 @@ Use o pedido apenas para decidir o conteúdo e a estrutura visual. "material" e 
 Se houver "quadro_atual", devolva o quadro completo com as mudanças pedidas. Preserve os IDs e as formas dos nós reaproveitados, as informações e as conexões que o pedido não mudou. Respeite quadros vazios ou desconectados quando o pedido não exigir conexões.
 Responda apenas com JSON conforme o esquema. Não inclua posições, código nem Markdown. Use título de até 90 caracteres.
 Em novos quadros, crie de 3 a 12 nós em geral. Respeite o máximo de 24 nós e 42 conexões sem duplicatas. Cada ID tem até 36 caracteres e usa somente a-z, 0-9 e hífens. Cada nó tem rótulo de até 58 caracteres e detalhe opcional de até 100 caracteres.
+Use uma ideia por nó. Coloque o termo reconhecível no rótulo e uma frase curta, fórmula ou exemplo no detalhe, sem repetir o rótulo. Separe conceitos distintos em nós conectados. Preserve símbolos matemáticos e acentos quando fizerem parte do conteúdo.
 Use "topic" para uma ideia central, "note" para explicações, "step" para etapas e "decision" para escolhas. Uma conexão liga IDs diferentes e existentes. Use rótulo de até 35 caracteres para nomear relações importantes.
 Use "ellipse", "diamond" e "text" para elipse, losango e texto avulso quando o pedido indicar essas formas.
 Use "" para detalhes ou rótulos de conexão ausentes. Se o pedido tratar de um tema perigoso, limite o quadro a conceitos seguros.`

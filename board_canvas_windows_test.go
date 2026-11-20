@@ -15,7 +15,6 @@ import (
 
 func TestBoardCanvasInputThroughGio(t *testing.T) {
 	board := exampleBoard()
-	s := &studio{theme: studioTheme()}
 	var c boardCanvas
 	var ops op.Ops
 	var router input.Router
@@ -24,7 +23,7 @@ func TestBoardCanvasInputThroughGio(t *testing.T) {
 	render := func() {
 		ops.Reset()
 		g := ctx{Ops: &ops, Source: router.Source(), Constraints: layout.Exact(size)}
-		c.layout(g, s, &board, editable, func(BoardNode) { saves++ })
+		c.layout(g, &board, editable, func(BoardNode) { saves++ })
 		router.Frame(&ops)
 	}
 	mouse := func(kind pointer.Kind, buttons pointer.Buttons, p f32.Point) {
@@ -40,7 +39,7 @@ func TestBoardCanvasInputThroughGio(t *testing.T) {
 	render()
 	first := &board.Nodes[0]
 	center := func(n *BoardNode) f32.Point {
-		return c.origin.Add(f32.Pt(float32(n.X)+boardNodeWidth/2, float32(n.Y)+boardNodeHeight/2).Mul(c.scale))
+		return c.screen(c.rects[boardCanvasIndex(board.Nodes, n.ID)].center())
 	}
 	from := center(first)
 	to := from.Add(f32.Pt(28, 22))
@@ -84,12 +83,57 @@ func TestBoardCanvasInputThroughGio(t *testing.T) {
 	}
 }
 
-func TestBoardCanvasConnectorEndsAtNodeBoundary(t *testing.T) {
-	start, end, ok := canvasConnector(f32.Pt(0, 0), f32.Pt(321, 0), 1)
-	if !ok || start != f32.Pt(boardNodeWidth, boardNodeHeight/2) || end != f32.Pt(321, boardNodeHeight/2) {
-		t.Fatalf("connector endpoints: %v to %v, %v", start, end, ok)
+func TestBoardCanvasFitContainsDistantNodes(t *testing.T) {
+	b := examBoard("flowchart")
+	b.Nodes[0].X, b.Nodes[0].Y = -9900, -4500
+	b.Nodes[1].X, b.Nodes[1].Y = 9900, 4500
+	var c boardCanvas
+	c.scene(&b)
+	for _, size := range []image.Point{image.Pt(1500, 900), image.Pt(420, 260)} {
+		c.frame(c.bounds, size, 1)
+		for i, node := range b.Nodes {
+			a, z := c.screen(c.rects[i].min), c.screen(c.rects[i].max)
+			if a.X < 10 || a.Y < 10 || z.X > float32(size.X-10) || z.Y > float32(size.Y-10) {
+				t.Errorf("%v: %s bounds %v→%v outside fit margin", size, node.ID, a, z)
+			}
+		}
+		a, z := c.screen(c.bounds.min), c.screen(c.bounds.max)
+		if a.X < 10 || a.Y < 10 || z.X > float32(size.X-10) || z.Y > float32(size.Y-10) {
+			t.Errorf("%v: diagram bounds %v→%v outside fit margin", size, a, z)
+		}
 	}
-	if _, _, ok := canvasConnector(f32.Pt(100, 100), f32.Pt(120, 160), 1); ok {
-		t.Fatal("overlapping nodes should not show a reversed connector")
+	before := c.scale
+	c.zoomBy(.8)
+	if c.scale > before {
+		t.Fatalf("zooming out increased scale from %g to %g", before, c.scale)
+	}
+}
+
+func TestBoardCanvasFitRetainsMarginsAtDifferentSizesAndDPI(t *testing.T) {
+	for _, subject := range []string{"biologia", "filosofia", "matematica"} {
+		t.Run(subject, func(t *testing.T) {
+			b := generatedExamBoard(t, subject)
+			arrangeBoard(&b, nil)
+			var c boardCanvas
+			c.scene(&b)
+			for _, viewport := range []struct {
+				size image.Point
+				dpi  float32
+			}{{image.Pt(1350, 850), 1.5}, {image.Pt(420, 260), 1}, {image.Pt(1920, 1000), 1}} {
+				c.frame(c.bounds, viewport.size, viewport.dpi)
+				a, z := c.screen(c.bounds.min), c.screen(c.bounds.max)
+				margin := 27 * viewport.dpi
+				if a.X < margin || a.Y < margin || z.X > float32(viewport.size.X)-margin || z.Y > float32(viewport.size.Y)-margin {
+					t.Fatalf("viewport %v at DPI %g clipped diagram bounds %v→%v", viewport.size, viewport.dpi, a, z)
+				}
+			}
+			c.zoomBy(1.2)
+			oldCenter := f32.Pt(float32(c.size.X)/2, float32(c.size.Y)/2).Sub(c.origin).Div(c.scale)
+			c.frame(c.bounds, image.Pt(550, 400), 1.5)
+			newCenter := f32.Pt(275, 200).Sub(c.origin).Div(c.scale)
+			if oldCenter.Sub(newCenter).Round() != (image.Point{}) {
+				t.Fatalf("resize changed the manual camera target %v → %v", oldCenter, newCenter)
+			}
+		})
 	}
 }

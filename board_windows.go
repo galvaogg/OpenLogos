@@ -342,7 +342,7 @@ func (s *studio) boardWorkspace(g ctx) dim {
 			})),
 			layout.Flexed(1, func(g ctx) dim {
 				g.Constraints.Min = g.Constraints.Max
-				return ui.canvas.layout(g, s, display, editable, func(previous BoardNode) {
+				return ui.canvas.layout(g, display, editable, func(previous BoardNode) {
 					before := b.clone()
 					before.Nodes[boardCanvasIndex(before.Nodes, previous.ID)] = previous
 					ui.remember(before)

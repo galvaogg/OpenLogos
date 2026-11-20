@@ -108,8 +108,8 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 	nodePoint := func(n BoardNode) f32.Point {
 		r := bounds("Área do quadro.")
 		c := &s.boardUI.canvas
-		p := f32.Pt(float32(n.X)+boardNodeWidth/2, float32(n.Y)+45)
-		return f32.Pt(float32(r.Min.X), float32(r.Min.Y)).Add(c.origin).Add(p.Mul(c.scale))
+		p := c.rects[boardCanvasIndex(current.Nodes, n.ID)].center()
+		return f32.Pt(float32(r.Min.X), float32(r.Min.Y)).Add(c.screen(p))
 	}
 	dragLeft := func(node BoardNode) {
 		from := nodePoint(node)
@@ -191,6 +191,7 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 			ID, Type, OriginalText, ContainerID string
 			StartBinding, EndBinding            struct{ ElementID string }
 			BoundElements                       []excalidrawBoundElement
+			GroupIDs                            []string
 			X, Y                                float64
 			Locked                              bool
 		}
@@ -214,10 +215,12 @@ func TestManualBoardWorkflowThroughGio(t *testing.T) {
 	end := scene.Elements[elements["node-0"]]
 	arrow := scene.Elements[elements["edge-0"]]
 	caption := scene.Elements[elements["edge-0-text"]]
+	boundCaption := caption.ContainerID == arrow.ID ||
+		len(caption.GroupIDs) == 1 && len(arrow.GroupIDs) == 1 && caption.GroupIDs[0] == arrow.GroupIDs[0]
 	if start.ContainerID != "" || start.OriginalText != "Texto livre" || len(start.BoundElements) != 1 ||
 		start.BoundElements[0].ID != arrow.ID || end.X != saved.Nodes[0].X || end.Y != saved.Nodes[0].Y ||
 		arrow.StartBinding.ElementID != start.ID || arrow.EndBinding.ElementID != end.ID ||
-		caption.ID != "edge-0-text" || caption.ContainerID != arrow.ID || caption.OriginalText != want.Label {
+		caption.ID != "edge-0-text" || !boundCaption || caption.OriginalText != want.Label {
 		t.Fatalf("export lost an editable binding, label or saved position: %+v", scene.Elements)
 	}
 }

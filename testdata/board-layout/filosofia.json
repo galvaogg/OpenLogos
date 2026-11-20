@@ -1,0 +1,23 @@
+{
+  "title": "Linha do tempo da filosofia de Sócrates a Nietzsche",
+  "kind": "timeline",
+  "nodes": [
+    {"id":"socrates","label":"Sócrates (c. 470–399 a.C.)","detail":"A refutação socrática usa perguntas para expor contradições e examinar como devemos viver.","shape":"step"},
+    {"id":"platao","label":"Platão (c. 427–347 a.C.)","detail":"A teoria das Formas distingue o mundo sensível das realidades inteligíveis e imutáveis.","shape":"step"},
+    {"id":"aristoteles","label":"Aristóteles (384–322 a.C.)","detail":"A ética das virtudes entende a felicidade como atividade da alma conforme a virtude.","shape":"step"},
+    {"id":"descartes","label":"René Descartes (1596–1650)","detail":"A dúvida metódica suspende crenças incertas e chega à certeza expressa em «penso, logo existo».","shape":"step"},
+    {"id":"hume","label":"David Hume (1711–1776)","detail":"O empirismo de Hume explica a crença na causalidade pelo hábito de observar eventos associados.","shape":"step"},
+    {"id":"kant","label":"Immanuel Kant (1724–1804)","detail":"O idealismo transcendental investiga as condições a priori que tornam a experiência possível.","shape":"step"},
+    {"id":"mill","label":"John Stuart Mill (1806–1873)","detail":"O princípio da utilidade avalia ações pela felicidade geral e considera a qualidade dos prazeres.","shape":"step"},
+    {"id":"nietzsche","label":"Friedrich Nietzsche (1844–1900)","detail":"A genealogia da moral investiga a origem histórica dos valores e as forças que os moldam.","shape":"step"}
+  ],
+  "edges": [
+    {"from":"socrates","to":"platao","label":"Mestre e discípulo"},
+    {"from":"platao","to":"aristoteles","label":"Crítica à teoria das Formas"},
+    {"from":"aristoteles","to":"descartes","label":"Da virtude à busca da certeza"},
+    {"from":"descartes","to":"hume","label":"Do racionalismo ao empirismo"},
+    {"from":"hume","to":"kant","label":"Resposta ao desafio cético"},
+    {"from":"kant","to":"mill","label":"Do dever à utilidade"},
+    {"from":"mill","to":"nietzsche","label":"Crítica ao utilitarismo"}
+  ]
+}

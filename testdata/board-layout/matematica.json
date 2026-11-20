@@ -1,0 +1,29 @@
+{
+  "title": "Fluxograma de prova: limites, derivadas e otimização",
+  "kind": "flowchart",
+  "nodes": [
+    {"id":"inicio","label":"Identifique a função e o domínio","detail":"Anote f(x), o intervalo do problema e as restrições sobre x antes de iniciar os cálculos.","shape":"step"},
+    {"id":"limites","label":"Calcule os limites relevantes","detail":"Calcule os limites laterais nos pontos excluídos e, se o intervalo for ilimitado, no infinito.","shape":"step"},
+    {"id":"derivada","label":"Calcule f′(x)","detail":"Derive f(x) nos trechos em que é diferenciável e marque onde f′(x) não existe no domínio.","shape":"step"},
+    {"id":"equacao","label":"A equação f′(x) = 0 é quadrática?","detail":"Veja se a equação se reduz a ax² + bx + c = 0, com a ≠ 0, no trecho em que f′(x) existe.","shape":"decision"},
+    {"id":"discriminante","label":"Qual é o sinal de Δ = b² − 4ac?","detail":"Se Δ > 0, há duas raízes reais distintas. Se Δ = 0, há uma raiz real dupla. Se Δ < 0, nenhuma.","shape":"decision"},
+    {"id":"raizes","label":"Calcule x₁ e x₂","detail":"Use x₁ = (−b + √Δ)/(2a) e x₂ = (−b − √Δ)/(2a). Se Δ = 0, registre a raiz dupla só uma vez.","shape":"step"},
+    {"id":"outros-metodos","label":"Resolva f′(x) = 0 no domínio","detail":"Use a forma da equação para escolher o método e confira as soluções na expressão original.","shape":"step"},
+    {"id":"pontos-criticos","label":"Reúna os pontos críticos","detail":"Liste os pontos internos do domínio em que f′(x) = 0 ou em que a derivada f′(x) não existe.","shape":"step"},
+    {"id":"concavidade","label":"Analise a concavidade e os extremos locais","detail":"Se f″ > 0, a concavidade é para cima. Se f″ < 0, é para baixo. Use o sinal de f′ nos extremos.","shape":"step"},
+    {"id":"otimizacao","label":"Determine o mínimo ou máximo global","detail":"Compare f nos pontos críticos e extremos incluídos com os limites. Verifique se f atinge o ótimo.","shape":"step"}
+  ],
+  "edges": [
+    {"from":"inicio","to":"limites","label":""},
+    {"from":"limites","to":"derivada","label":""},
+    {"from":"derivada","to":"equacao","label":""},
+    {"from":"equacao","to":"discriminante","label":"Sim"},
+    {"from":"equacao","to":"outros-metodos","label":"Não"},
+    {"from":"discriminante","to":"raizes","label":"Δ ≥ 0 · há raiz real"},
+    {"from":"discriminante","to":"pontos-criticos","label":"Δ < 0 · sem raiz real"},
+    {"from":"raizes","to":"pontos-criticos","label":""},
+    {"from":"outros-metodos","to":"pontos-criticos","label":""},
+    {"from":"pontos-criticos","to":"concavidade","label":""},
+    {"from":"concavidade","to":"otimizacao","label":""}
+  ]
+}

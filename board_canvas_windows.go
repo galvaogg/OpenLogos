@@ -2,6 +2,7 @@ package main
 
 import (
 	"image"
+	"image/color"
 	"math"
 	"slices"
 
@@ -21,17 +22,28 @@ import (
 )
 
 type boardCanvas struct {
-	selected   string
-	origin     f32.Point
-	size       image.Point
-	scale, dpi float32
-	refit      bool
-	drag       boardDrag
-	gridOps    op.Ops
-	gridCall   op.CallOp
-	gridSize   image.Point
-	gridStep   float64
-	gridDPI    float32
+	selected      string
+	origin        f32.Point
+	size          image.Point
+	scale, dpi    float32
+	fitScale      float32
+	refit, fitted bool
+	drag          boardDrag
+	shaper        *text.Shaper
+	nodes         []BoardNode
+	edges         []BoardEdge
+	cards         []boardNodeLayout
+	rects         []boardRect
+	links         []boardEdgeLayout
+	bounds        boardRect
+	framedBounds  boardRect
+	dragged       string
+	dragPoint     f32.Point
+	gridOps       op.Ops
+	gridCall      op.CallOp
+	gridSize      image.Point
+	gridStep      float64
+	gridDPI       float32
 }
 
 type boardDrag struct {
@@ -60,38 +72,63 @@ func (c *boardCanvas) zoomAt(anchor f32.Point, factor float64) {
 	if c.scale == 0 {
 		return
 	}
-	scale := min(2.2*c.dpi, max(.16*c.dpi, c.scale*float32(factor)))
+	scale := min(2.2*c.dpi, max(min(.12*c.dpi, c.fitScale), c.scale*float32(factor)))
 	c.origin = anchor.Sub(anchor.Sub(c.origin).Mul(scale / c.scale))
-	c.scale = scale
+	c.scale, c.fitted = scale, false
 }
 
-func (c *boardCanvas) frame(nodes []BoardNode, size image.Point, dpi float32) {
+func (c *boardCanvas) frame(bounds boardRect, size image.Point, dpi float32) {
 	center := f32.Pt(float32(size.X)/2, float32(size.Y)/2)
-	if c.scale == 0 || c.refit {
-		c.scale, c.origin = dpi, center
-		if len(nodes) > 0 {
-			minX, minY := nodes[0].X, nodes[0].Y
-			maxX, maxY := minX+boardNodeWidth, minY+boardNodeHeight
-			for _, n := range nodes[1:] {
-				minX, minY = min(minX, n.X), min(minY, n.Y)
-				maxX, maxY = max(maxX, n.X+boardNodeWidth), max(maxY, n.Y+boardNodeHeight)
-			}
-			available := center.Mul(2).Sub(f32.Pt(56*dpi, 56*dpi))
-			c.scale = max(.16*dpi, min(dpi, available.X/float32(maxX-minX), available.Y/float32(maxY-minY)))
-			c.origin = center.Sub(f32.Pt(float32(minX+maxX)/2, float32(minY+maxY)/2).Mul(c.scale))
-		}
-		c.refit = false
-	} else if c.dpi != dpi || c.size != size && !c.drag.active {
+	margin := f32.Pt(min(28*dpi, center.X*.28), min(28*dpi, center.Y*.28))
+	available, world := center.Sub(margin).Mul(2), bounds.size()
+	c.fitScale = min(1.25*dpi, available.X/max(1, world.X), available.Y/max(1, world.Y))
+	resized := c.dpi != dpi || c.size != size
+	if c.scale == 0 || c.refit || c.fitted && (resized || bounds != c.framedBounds) && !c.drag.active {
+		c.scale = c.fitScale
+		c.origin = center.Sub(bounds.center().Mul(c.scale))
+		c.refit, c.fitted = false, true
+		c.framedBounds = bounds
+	} else if resized && !c.drag.active {
 		previous := f32.Pt(float32(c.size.X)/2, float32(c.size.Y)/2)
 		ratio := dpi / c.dpi
 		c.origin = center.Sub(previous.Sub(c.origin).Mul(ratio))
 		c.scale *= ratio
-		c.drag = boardDrag{}
 	}
 	c.size, c.dpi = size, dpi
 }
 
-func (c *boardCanvas) layout(g ctx, s *studio, b *Board, editable bool, onMove func(BoardNode)) dim {
+func (c *boardCanvas) scene(b *Board) {
+	nodesChanged := !slices.Equal(c.nodes, b.Nodes)
+	dragged, point := "", f32.Point{}
+	if c.drag.moved {
+		dragged, point = c.drag.node, c.drag.current
+	}
+	if !nodesChanged && slices.Equal(c.edges, b.Edges) && c.dragged == dragged && c.dragPoint == point {
+		return
+	}
+	if nodesChanged {
+		c.nodes = append(c.nodes[:0], b.Nodes...)
+		c.cards = measureBoardNodes(b.Nodes)
+		c.rects = make([]boardRect, len(b.Nodes))
+	}
+	c.edges = append(c.edges[:0], b.Edges...)
+	c.dragged, c.dragPoint = dragged, point
+	for i, node := range b.Nodes {
+		p := boardNodePosition(node)
+		if dragged == node.ID {
+			p = point
+		}
+		c.rects[i] = c.cards[i].rect(p)
+	}
+	if c.shaper == nil {
+		c.shaper = newBoardShaper()
+	}
+	c.links, c.bounds = layoutBoardEdges(c.shaper, *b, c.rects)
+}
+
+func (c *boardCanvas) screen(p f32.Point) f32.Point { return c.origin.Add(p.Mul(c.scale)) }
+
+func (c *boardCanvas) layout(g ctx, b *Board, editable bool, onMove func(BoardNode)) dim {
 	size := g.Constraints.Max
 	if size.X <= 2 || size.Y <= 2 {
 		return dim{Size: size}
@@ -100,10 +137,12 @@ func (c *boardCanvas) layout(g ctx, s *studio, b *Board, editable bool, onMove f
 	if dpi == 0 {
 		dpi = 1
 	}
-	c.frame(b.Nodes, size, dpi)
+	c.scene(b)
+	c.frame(c.bounds, size, dpi)
 	c.update(g, b.Nodes, editable, onMove)
+	c.scene(b)
 	if c.refit {
-		c.frame(b.Nodes, size, dpi)
+		c.frame(c.bounds, size, dpi)
 	}
 
 	bounds := image.Rectangle{Max: size}
@@ -125,33 +164,19 @@ func (c *boardCanvas) layout(g ctx, s *studio, b *Board, editable bool, onMove f
 	paint.Fill(g.Ops, boardPaper)
 	c.grid(g)
 
-	positions := make(map[string]f32.Point, len(b.Nodes))
-	occupied := make([]image.Rectangle, 0, len(b.Nodes)+len(b.Edges))
-	for _, node := range b.Nodes {
-		p := f32.Pt(float32(node.X), float32(node.Y))
-		if c.drag.node == node.ID && c.drag.moved {
-			p = c.drag.current
-		}
-		position := c.origin.Add(p.Mul(c.scale))
-		positions[node.ID] = position
-		occupied = append(occupied, image.Rectangle{Min: position.Round(),
-			Max: position.Add(f32.Pt(boardNodeWidth*c.scale, boardNodeHeight*c.scale)).Round()})
+	for i, edge := range b.Edges {
+		c.edge(g, c.links[i], c.selected == edge.From || c.selected == edge.To)
 	}
-	for _, edge := range b.Edges {
-		a, from := positions[edge.From]
-		z, to := positions[edge.To]
-		if from && to {
-			c.edge(g, s, a, z, edge, &occupied)
-		}
+	for i, edge := range b.Edges {
+		c.edgeLabel(g, c.links[i], c.selected == edge.From || c.selected == edge.To)
 	}
-	for _, node := range b.Nodes {
+	for i, node := range b.Nodes {
 		if node.ID != c.selected {
-			c.node(g, s, node, positions[node.ID], false, bounds)
+			c.node(g, node, i, false, bounds)
 		}
 	}
 	if i := boardCanvasIndex(b.Nodes, c.selected); i >= 0 {
-		node := b.Nodes[i]
-		c.node(g, s, node, positions[node.ID], true, bounds)
+		c.node(g, b.Nodes[i], i, true, bounds)
 	}
 	return dim{Size: size}
 }
@@ -218,6 +243,7 @@ func (c *boardCanvas) handlePointer(g ctx, e pointer.Event, nodes []BoardNode, e
 		delta := e.Position.Sub(c.drag.start)
 		c.drag.moved = c.drag.moved || delta.X*delta.X+delta.Y*delta.Y >= 9*c.dpi*c.dpi
 		if c.drag.moved {
+			c.fitted = false
 			if c.drag.node != "" {
 				c.drag.current = c.drag.initial.Add(delta.Div(c.scale))
 			} else {
@@ -259,6 +285,7 @@ func (c *boardCanvas) handleKey(g ctx, name key.Name, nodes []BoardNode, editabl
 		delta.Y = 16
 	}
 	if delta != (f32.Point{}) {
+		c.fitted = false
 		if editable && i >= 0 {
 			node := &nodes[i]
 			moveCanvasNode(node, f32.Pt(float32(node.X), float32(node.Y)).Add(delta), onMove)
@@ -275,24 +302,33 @@ func moveCanvasNode(node *BoardNode, p f32.Point, onMove func(BoardNode)) {
 	if node.X == x && node.Y == y {
 		return
 	}
-	previous := *node
+	before := *node
 	node.X, node.Y = x, y
 	if onMove != nil {
-		onMove(previous)
+		onMove(before)
 	}
 }
 
 func (c *boardCanvas) hit(nodes []BoardNode, screen f32.Point) string {
 	p := screen.Sub(c.origin).Div(c.scale)
-	hit := func(n BoardNode) bool {
-		x, y := float64(p.X)-n.X, float64(p.Y)-n.Y
-		return x >= 0 && x <= boardNodeWidth && y >= 0 && y <= boardNodeHeight
+	hit := func(i int) bool {
+		r := c.rects[i]
+		d, size := p.Sub(r.center()), r.size()
+		x, y := absBoardCoord(d.X)*2/size.X, absBoardCoord(d.Y)*2/size.Y
+		switch nodes[i].Shape {
+		case "ellipse":
+			return x*x+y*y <= 1
+		case "diamond":
+			return x+y <= 1
+		default:
+			return max(x, y) <= 1
+		}
 	}
-	if i := boardCanvasIndex(nodes, c.selected); i >= 0 && hit(nodes[i]) {
+	if i := boardCanvasIndex(nodes, c.selected); i >= 0 && hit(i) {
 		return c.selected
 	}
 	for i := len(nodes) - 1; i >= 0; i-- {
-		if hit(nodes[i]) {
+		if hit(i) {
 			return nodes[i].ID
 		}
 	}
@@ -331,35 +367,33 @@ func (c *boardCanvas) grid(g ctx) {
 	offset.Pop()
 }
 
-func canvasConnector(a, z f32.Point, scale float32) (f32.Point, f32.Point, bool) {
-	half := f32.Pt(boardNodeWidth*scale/2, boardNodeHeight*scale/2)
-	a, z = a.Add(half), z.Add(half)
-	delta := z.Sub(a)
-	ratio := max(float32(math.Abs(float64(delta.X)))/half.X, float32(math.Abs(float64(delta.Y)))/half.Y)
-	if ratio <= 2 {
-		return f32.Point{}, f32.Point{}, false
+func boardEdgeTint(chosen bool) color.NRGBA {
+	if chosen {
+		return accent
 	}
-	edge := delta.Div(ratio)
-	return a.Add(edge), z.Sub(edge), true
+	return hex(0x7385ac)
 }
 
-func (c *boardCanvas) edge(g ctx, s *studio, a, z f32.Point, edge BoardEdge, occupied *[]image.Rectangle) {
-	a, z, ok := canvasConnector(a, z, c.scale)
-	if !ok {
+func (c *boardCanvas) edge(g ctx, edge boardEdgeLayout, chosen bool) {
+	if len(edge.points) < 2 {
 		return
 	}
-	d := z.Sub(a)
-	length := float32(math.Hypot(float64(d.X), float64(d.Y)))
+	z := c.screen(edge.points[len(edge.points)-1])
+	d := z.Sub(c.screen(edge.points[len(edge.points)-2]))
+	length := normBoardPoint(d)
+	if length == 0 {
+		return
+	}
 	u := d.Div(length)
 	perp := f32.Pt(-u.Y, u.X)
 	head := min(length/2, max(5*c.dpi, 10*c.scale))
-	tint := hex(0x7385ac)
-	if c.selected == edge.From || c.selected == edge.To {
-		tint = accent
-	}
+	tint := boardEdgeTint(chosen)
 	var path clip.Path
 	path.Begin(g.Ops)
-	path.MoveTo(a)
+	path.MoveTo(c.screen(edge.points[0]))
+	for _, p := range edge.points[1 : len(edge.points)-1] {
+		path.LineTo(c.screen(p))
+	}
 	path.LineTo(z.Sub(u.Mul(head / 2)))
 	paint.FillShape(g.Ops, tint, clip.Stroke{Path: path.End(), Width: max(c.dpi, 1.8*c.scale)}.Op())
 	path.Begin(g.Ops)
@@ -369,38 +403,40 @@ func (c *boardCanvas) edge(g ctx, s *studio, a, z f32.Point, edge BoardEdge, occ
 	path.LineTo(base.Sub(perp.Mul(head * .46)))
 	path.Close()
 	paint.FillShape(g.Ops, tint, clip.Outline{Path: path.End()}.Op())
-	if edge.Label == "" || c.scale/c.dpi < .42 {
-		return
-	}
-	label := material.Label(s.theme, unit.Sp(max(9, 12*c.scale/c.dpi)), edge.Label)
-	label.Color, label.Font.Weight, label.MaxLines = tint, font.Medium, 1
-	lctx := g
-	lctx.Constraints = layout.Constraints{Max: image.Pt(g.Dp(160), g.Dp(32))}
-	record := op.Record(g.Ops)
-	dimensions := box(lctx, boardPaper, clear, 5, padding(2, 5, 2, label.Layout))
-	call := record.Stop()
-	for _, position := range []float32{.5, .33, .67, .22, .78} {
-		center := a.Add(d.Mul(position)).Round().Sub(dimensions.Size.Div(2))
-		bounds := image.Rectangle{Min: center, Max: center.Add(dimensions.Size)}
-		if slices.ContainsFunc(*occupied, func(other image.Rectangle) bool { return bounds.Overlaps(other) }) {
-			continue
-		}
-		*occupied = append(*occupied, bounds.Inset(-1))
-		offset := op.Offset(center).Push(g.Ops)
-		call.Add(g.Ops)
-		offset.Pop()
-		break
-	}
 }
 
-func (c *boardCanvas) node(g ctx, s *studio, n BoardNode, p f32.Point, chosen bool, viewport image.Rectangle) {
-	origin := p.Round()
-	end := p.Add(f32.Pt(boardNodeWidth*c.scale, boardNodeHeight*c.scale)).Round()
+func (c *boardCanvas) edgeLabel(g ctx, edge boardEdgeLayout, chosen bool) {
+	if edge.label.wrapped == "" {
+		return
+	}
+	bounds := image.Rectangle{Min: c.screen(edge.labelBox.min).Round(), Max: c.screen(edge.labelBox.max).Round()}
+	paint.FillShape(g.Ops, boardPaper, clip.UniformRRect(bounds, int(5*c.scale)).Op(g.Ops))
+	c.drawText(g, edge.label, c.screen(edge.labelBox.min.Add(f32.Pt(boardLabelPadX, boardLabelPadY))), boardEdgeTint(chosen), text.Middle)
+}
+
+func (c *boardCanvas) node(g ctx, n BoardNode, i int, chosen bool, viewport image.Rectangle) {
+	r := c.rects[i]
+	origin, end := c.screen(r.min).Round(), c.screen(r.max).Round()
 	bounds := image.Rectangle{Min: origin, Max: end}
 	if !bounds.Overlaps(viewport) {
 		return
 	}
 	local := image.Rectangle{Max: bounds.Size()}
+	card := c.cards[i]
+	if n.Shape == "text" {
+		offset := op.Offset(origin).Push(g.Ops)
+		defer offset.Pop()
+		area := clip.Rect(local).Push(g.Ops)
+		semantic.LabelOp(n.Label).Add(g.Ops)
+		semantic.DescriptionOp(n.Detail).Add(g.Ops)
+		semantic.SelectedOp(chosen).Add(g.Ops)
+		if chosen {
+			round(g, local, 3, selected)
+		}
+		c.drawText(g, card.exported, f32.Point{}, ink, text.Start)
+		area.Pop()
+		return
+	}
 	fill, border, tint := hex(0x242d3a), hex(0x495a75), hex(0xbccfec)
 	switch n.Shape {
 	case "topic":
@@ -416,51 +452,56 @@ func (c *boardCanvas) node(g ctx, s *studio, n BoardNode, p f32.Point, chosen bo
 	offset := op.Offset(origin).Push(g.Ops)
 	defer offset.Pop()
 	radius := max(3, int(13*c.scale))
-	kind := n.excalidrawType()
-	outer := boardNodeClip(g.Ops, local, radius, kind).Push(g.Ops)
+	outer := boardNodeClip(g.Ops, local, radius, n.Shape).Push(g.Ops)
 	defer outer.Pop()
 	semantic.LabelOp(n.Label).Add(g.Ops)
 	semantic.DescriptionOp(n.Detail).Add(g.Ops)
 	semantic.SelectedOp(chosen).Add(g.Ops)
-	if kind != "text" {
-		paint.Fill(g.Ops, border)
-		stroke := max(1, int(c.dpi))
-		if chosen {
-			stroke *= 2
-		}
-		inner := boardNodeClip(g.Ops, local.Inset(stroke), max(2, radius-stroke), kind).Push(g.Ops)
-		if n.Shape == "topic" {
-			gradient(g, f32.Pt(0, 0), f32.Pt(float32(local.Max.X), float32(local.Max.Y)), hex(0x404b7b), fill)
-		} else {
-			paint.Fill(g.Ops, fill)
-		}
-		defer inner.Pop()
+	paint.Fill(g.Ops, border)
+	stroke := max(1, int(c.dpi))
+	if chosen {
+		stroke *= 2
+	}
+	inside := local.Inset(stroke)
+	if inside.Empty() {
+		return
+	}
+	inner := boardNodeClip(g.Ops, inside, max(2, radius-stroke), n.Shape).Push(g.Ops)
+	defer inner.Pop()
+	if n.Shape == "topic" {
+		gradient(g, f32.Pt(0, 0), f32.Pt(float32(local.Max.X), float32(local.Max.Y)), hex(0x404b7b), fill)
+	} else {
+		paint.Fill(g.Ops, fill)
 	}
 
-	zoom := c.scale / c.dpi
-	fontSize := unit.Sp(max(8, 17*zoom))
-	title := material.Label(s.theme, fontSize, n.Label)
-	title.Color, title.Font.Weight, title.MaxLines = ink, font.SemiBold, 2
-	detail := material.Label(s.theme, unit.Sp(max(8, 13*zoom)), n.Detail)
-	detail.Color, detail.MaxLines = tint, 2
-	align, pad := layout.W, float32(14)
-	switch kind {
-	case "ellipse", "diamond":
-		align, pad = layout.Center, 32
-		title.Alignment, detail.Alignment = text.Middle, text.Middle
-	case "text":
-		if chosen {
-			title.Color, detail.Color = accent, accent
-		}
+	p := f32.Pt(boardNodePad, (card.height-float32(card.textHeight()))/2)
+	align := text.Start
+	if n.Shape == "ellipse" || n.Shape == "diamond" {
+		p.X, align = (card.width-float32(card.title.width))/2, text.Middle
 	}
-	g.Constraints = layout.Exact(local.Size())
-	vertical := unit.Dp(max(3, 14*zoom))
-	padding(vertical, unit.Dp(max(3, pad*zoom)), vertical, func(g ctx) dim {
-		return align.Layout(g, func(g ctx) dim {
-			if n.Detail == "" || zoom < .42 {
-				return title.Layout(g)
-			}
-			return column(g, title.Layout, gap(unit.Dp(max(1, 5*zoom))), detail.Layout)
-		})
-	})(g)
+	c.drawText(g, card.title, p.Mul(c.scale), ink, align)
+	if card.detail.wrapped != "" {
+		p.Y += float32(card.title.height + boardTextGap)
+		if align == text.Middle {
+			p.X = (card.width - float32(card.detail.width)) / 2
+		}
+		c.drawText(g, card.detail, p.Mul(c.scale), tint, align)
+	}
+}
+
+func (c *boardCanvas) drawText(g ctx, block boardTextBlock, position f32.Point, color color.NRGBA, alignment text.Alignment) {
+	_, face := boardFonts()
+	label := material.LabelStyle{
+		Text: block.wrapped, Color: color, TextSize: unit.Sp(block.fontSize), Shaper: c.shaper,
+		Font: font.Font{Typeface: face, Weight: block.weight}, Alignment: alignment,
+		LineHeight: unit.Sp(block.lineHeight), LineHeightScale: 1, WrapPolicy: text.WrapWords,
+	}
+	g.Metric = unit.Metric{PxPerDp: 1, PxPerSp: 1}
+	g.Constraints = layout.Constraints{Max: image.Pt(block.width+2, block.height)}
+	if alignment == text.Middle {
+		g.Constraints.Min.X = block.width
+	}
+	transform := op.Affine(f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(c.scale, c.scale)).Offset(position)).Push(g.Ops)
+	label.Layout(g)
+	transform.Pop()
 }

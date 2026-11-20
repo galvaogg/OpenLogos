@@ -11,12 +11,8 @@ import (
 )
 
 const (
-	boardNodeWidth  = 216
-	boardNodeHeight = 100
-	boardStepX      = boardNodeWidth + 105
-	boardStepY      = boardNodeHeight + 43
-	boardMaxNodes   = 24
-	boardMaxEdges   = 42
+	boardMaxNodes = 24
+	boardMaxEdges = 42
 )
 
 type Board struct {
@@ -54,6 +50,11 @@ func boardKindName(kind string) string {
 	return ""
 }
 
+func boardText(value string, limit int, optional bool) bool {
+	return (optional && value == "" || validText(value, limit)) &&
+		utf8.ValidString(value) && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
 func (n BoardNode) excalidrawType() string {
 	switch n.Shape {
 	case "ellipse", "diamond", "text":
@@ -61,11 +62,6 @@ func (n BoardNode) excalidrawType() string {
 	default:
 		return "rectangle"
 	}
-}
-
-func boardText(value string, limit int, optional bool) bool {
-	return (optional && value == "" || validText(value, limit)) &&
-		utf8.ValidString(value) && strings.IndexFunc(value, unicode.IsControl) < 0
 }
 
 func validateBoard(b Board) error {
@@ -125,58 +121,7 @@ func (l *Library) addBoard(b Board) string {
 	return b.ID
 }
 
-// arrangeBoard uses semantic connections for placement and keeps the positions the learner already curated.
-func arrangeBoard(b *Board, previous *Board) {
-	columns := boardColumns(*b)
-	counts, rows := map[int]int{}, map[int]int{}
-	for _, col := range columns {
-		counts[col]++
-	}
-	positions := make(map[string]BoardNode)
-	if previous != nil {
-		for _, n := range previous.Nodes {
-			positions[n.ID] = n
-		}
-	}
-	var placed []BoardNode
-	for _, n := range b.Nodes {
-		if old, ok := positions[n.ID]; ok {
-			placed = append(placed, old)
-		}
-	}
-	for i := range b.Nodes {
-		n := &b.Nodes[i]
-		col := columns[n.ID]
-		row := rows[col]
-		rows[col]++
-		if old, ok := positions[n.ID]; ok {
-			n.X, n.Y = old.X, old.Y
-			continue
-		}
-		n.X = float64(col * boardStepX)
-		n.Y = (float64(row) - float64(counts[col]-1)/2) * boardStepY
-		if b.Kind == "timeline" {
-			count := min(4, len(b.Nodes)-i/4*4)
-			col := i % 4
-			if i/4%2 == 1 {
-				col = count - 1 - col
-			}
-			n.X, n.Y = float64(col*boardStepX), float64(i/4*boardStepY)
-		}
-		for slices.ContainsFunc(placed, func(p BoardNode) bool {
-			return math.Abs(p.X-n.X) < boardNodeWidth+12 && math.Abs(p.Y-n.Y) < boardNodeHeight+12
-		}) {
-			n.Y += boardStepY
-		}
-		placed = append(placed, *n)
-	}
-}
-
 func boardColumns(b Board) map[string]int {
-	columns := make(map[string]int, len(b.Nodes))
-	if len(b.Nodes) == 0 {
-		return columns
-	}
 	adjacent := make(map[string][]string)
 	incoming := make(map[string]int)
 	for _, edge := range b.Edges {
@@ -186,6 +131,7 @@ func boardColumns(b Board) map[string]int {
 			adjacent[edge.To] = append(adjacent[edge.To], edge.From)
 		}
 	}
+	columns := make(map[string]int, len(b.Nodes))
 	root := b.Nodes[0].ID
 	if b.Kind == "mindmap" {
 		for _, n := range b.Nodes {

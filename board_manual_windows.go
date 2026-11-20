@@ -94,12 +94,13 @@ func (s *studio) boardManualTools(b *Board) view {
 func (s *studio) addBoardNode(b *Board, shape, label string) {
 	ui := &s.boardUI
 	c := &ui.canvas
+	node := BoardNode{ID: "node-" + strings.ToLower(rand.Text()), Label: label, Shape: shape}
 	var p f32.Point
 	if c.scale > 0 {
 		center := f32.Pt(float32(c.size.X)/2, float32(c.size.Y)/2)
-		p = center.Sub(c.origin).Div(c.scale).Sub(f32.Pt(boardNodeWidth/2, boardNodeHeight/2))
+		card := measureBoardNodes([]BoardNode{node})[0]
+		p = center.Sub(c.origin).Div(c.scale).Sub(f32.Pt(card.width/2, card.height/2))
 	}
-	node := BoardNode{ID: "node-" + strings.ToLower(rand.Text()), Label: label, Shape: shape}
 	for range len(b.Nodes) + 1 {
 		node.X = min(10000, max(-10000, float64(p.X)))
 		node.Y = min(10000, max(-10000, float64(p.Y)))

@@ -16,13 +16,14 @@ func TestBoardArrangementAndPersistence(t *testing.T) {
 	if err := validateBoard(proposed); err != nil {
 		t.Fatal(err)
 	}
+	layouts := measureBoardNodes(proposed.Nodes)
+	added := len(old.Nodes)
 	for i, node := range old.Nodes {
 		next := proposed.Nodes[i]
 		if next.X != node.X || next.Y != node.Y {
 			t.Fatalf("moved existing node %q", node.ID)
 		}
-		added := proposed.Nodes[len(old.Nodes)]
-		if math.Abs(added.X-node.X) < boardNodeWidth && math.Abs(added.Y-node.Y) < boardNodeHeight {
+		if layouts[added].rect(boardNodePosition(proposed.Nodes[added])).overlaps(layouts[i].rect(boardNodePosition(next))) {
 			t.Fatalf("new node overlaps %q", node.ID)
 		}
 	}
