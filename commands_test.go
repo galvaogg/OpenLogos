@@ -27,6 +27,32 @@ func TestVisualStudyCommands(t *testing.T) {
 	}
 }
 
+func TestStudyQuestionRequests(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  bool
+	}{
+		{"/questoes frações", true},
+		{"/QUESTÕES biologia", true},
+		{"Busque questões sobre fotossíntese", true},
+		{"Dê algumas questões sobre fotossíntese", true},
+		{"Pesquise no Google questões de química", true},
+		{"2 questões de história do ENEM", true},
+		{"/praticar encontre questões de matemática", true},
+		{"/praticar fases da Lua", false},
+		{"A questão agrária no Brasil", false},
+		{"Questões ambientais no Brasil", false},
+		{"Quero estudar questões ambientais", false},
+		{"Crie questões sobre frações", false},
+		{"Como questões abertas ajudam na aprendizagem?", false},
+	} {
+		request, err := parseStudyRequest(tc.input)
+		if err != nil || request.searchesQuestions() != tc.want {
+			t.Errorf("%q: got %v, %v", tc.input, request.searchesQuestions(), err)
+		}
+	}
+}
+
 func TestStudyGuidanceUsesRegisteredCommand(t *testing.T) {
 	request := studyRequest{command: "/praticar", topic: "Frações"}
 	if request.guidance() != studyCommands[2].guidance || request.guidance() == studyCommands[0].guidance {

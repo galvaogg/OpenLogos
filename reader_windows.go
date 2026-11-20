@@ -6,6 +6,7 @@ import (
 
 	"gioui.org/font"
 	"gioui.org/layout"
+	"golang.org/x/sys/windows"
 )
 
 func (s *studio) reader(wideRail bool) []view {
@@ -13,6 +14,9 @@ func (s *studio) reader(wideRail bool) []view {
 	p := s.lib.progress(l)
 	idx := p.Cursor
 	items := []view{gap(22), s.label(l.Title, 15, muted, font.SemiBold), gap(12)}
+	if notice := l.questionSearchNotice(); notice != "" {
+		items = append(items, s.label(notice, 14, muted, font.Normal), gap(10))
+	}
 	if !wideRail {
 		items = append(items, func(g ctx) dim {
 			perRow := max(1, g.Constraints.Max.X/g.Dp(44))
@@ -82,6 +86,9 @@ func (s *studio) card(l Lesson, p *Progress, c Card, i int) view {
 				if c.Question != "" {
 					tag = "Exercício"
 				}
+				if origin := c.originLabel(); origin != "" {
+					tag = origin
+				}
 				items := []view{s.label(fmt.Sprintf("%s  ·  %d / %d", tag, i+1, len(l.Cards)), 13, accent, font.SemiBold), gap(8),
 					s.title(c.Title, 32), gap(12)}
 				if c.Body != "" {
@@ -91,6 +98,20 @@ func (s *studio) card(l Lesson, p *Progress, c Card, i int) view {
 					items = append(items, gap(4), s.cardHint(l, c, i))
 				}
 				if c.Question != "" {
+					if source := c.QuestionSource; source != nil {
+						if source.Title != "" {
+							items = append(items, s.label("Fonte encontrada no Google · "+source.Title, 13, muted, font.Normal))
+						}
+						items = append(items, s.label(source.URL, 13, muted, font.Normal), gap(4),
+							s.button(fmt.Sprintf("question-source:%s:%d", l.ID, i), "Abrir fonte", "right", quietButton, func() {
+								if validQuestionURL(source.URL) {
+									err := windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(source.URL), nil, nil, windows.SW_SHOWNORMAL)
+									if err != nil {
+										s.notice = "Não foi possível abrir a fonte."
+									}
+								}
+							}), gap(9))
+					}
 					items = append(items, s.label(c.Question, 18, ink, font.SemiBold), gap(5), s.cardHint(l, c, i), gap(9))
 					chosen, answered := p.Answers[i]
 					show := answered && (s.lib.Feedback == instant || p.Reviewed)
@@ -197,6 +218,9 @@ func (s *studio) review(l Lesson, p *Progress) []view {
 	if links := s.noteLinks(l, p, "review"); len(links) != 0 {
 		items = append(items, gap(15), s.label("Notas da lição", 19, ink, font.SemiBold), gap(8))
 		items = append(items, links...)
+	}
+	if l.GoogleQuestions {
+		return items
 	}
 	items = append(items, gap(15), s.label("Bibliografia", 19, ink, font.SemiBold), gap(8))
 	for _, source := range l.Sources {

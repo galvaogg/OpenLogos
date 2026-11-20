@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -20,22 +21,60 @@ const (
 )
 
 type Lesson struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Topic   string   `json:"topic"`
-	Summary string   `json:"summary"`
-	Cards   []Card   `json:"cards"`
-	Sources []string `json:"sources"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Topic           string   `json:"topic"`
+	Summary         string   `json:"summary"`
+	Cards           []Card   `json:"cards"`
+	Sources         []string `json:"sources"`
+	GoogleQuestions bool     `json:"google_questions,omitempty"`
 }
 
 type Card struct {
-	Title       string   `json:"title"`
-	Body        string   `json:"body"`
-	Question    string   `json:"question"`
-	Options     []string `json:"options"`
-	Correct     int      `json:"correct"`
-	Explanation string   `json:"explanation"`
-	Hint        string   `json:"hint,omitempty"`
+	Title          string          `json:"title"`
+	Body           string          `json:"body"`
+	Question       string          `json:"question"`
+	Options        []string        `json:"options"`
+	Correct        int             `json:"correct"`
+	Explanation    string          `json:"explanation"`
+	Hint           string          `json:"hint,omitempty"`
+	QuestionOrigin string          `json:"question_origin,omitempty"`
+	QuestionSource *QuestionSource `json:"question_source,omitempty"`
+}
+
+type QuestionSource struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+const (
+	questionOriginal = "original"
+	questionAdapted  = "adapted"
+	questionCreated  = "created"
+)
+
+func (c Card) originLabel() string {
+	switch c.QuestionOrigin {
+	case questionOriginal:
+		return "Questão original encontrada"
+	case questionAdapted:
+		return "Questão adaptada pela IA"
+	case questionCreated:
+		return "Questão criada pela IA"
+	}
+	return ""
+}
+
+func (l Lesson) questionSearchNotice() string {
+	if l.GoogleQuestions {
+		for _, card := range l.Cards {
+			if card.QuestionSource != nil {
+				return ""
+			}
+		}
+		return "Nenhuma questão com evidência suficiente nos resultados do Google. Os exercícios foram criados pela IA."
+	}
+	return ""
 }
 
 type Progress struct {
@@ -57,11 +96,23 @@ type Library struct {
 
 func validateLesson(l Lesson) error {
 	if !validText(l.Title, 100) || !validText(l.Topic, 90) || !validText(l.Summary, 400) ||
-		len(l.Cards) < 3 || len(l.Cards) > 12 || len(l.Sources) > 8 {
+		len(l.Cards) < 3 || len(l.Cards) > 12 || len(l.Sources) > 8 || l.GoogleQuestions && len(l.Sources) != 0 {
 		return errors.New("A lição retornou incompleta ou fora do formato esperado.")
 	}
+	invalidLink := errors.New("Uma URL apareceu fora dos campos de fonte. Tente de novo.")
+	if l.GoogleQuestions && slices.ContainsFunc([]string{l.Title, l.Topic, l.Summary}, explicitStudyLink.MatchString) {
+		return invalidLink
+	}
 	exercises := 0
+	maxOptions := 4
+	if l.GoogleQuestions {
+		maxOptions = 5
+	}
 	for _, c := range l.Cards {
+		if l.GoogleQuestions && (slices.ContainsFunc([]string{c.Title, c.Body, c.Question, c.Explanation, c.Hint}, explicitStudyLink.MatchString) ||
+			slices.ContainsFunc(c.Options, explicitStudyLink.MatchString)) {
+			return invalidLink
+		}
 		if !validText(c.Title, 100) {
 			return errors.New("Um card retornou sem título válido.")
 		}
@@ -69,14 +120,14 @@ func validateLesson(l Lesson) error {
 			return errors.New("Um card retornou com uma dica fora do formato esperado.")
 		}
 		if c.Question == "" {
-			if !validText(c.Body, 1800) || len(c.Options) != 0 {
+			if !validText(c.Body, 1800) || len(c.Options) != 0 || c.QuestionOrigin != "" || c.QuestionSource != nil {
 				return errors.New("Um card de leitura retornou fora do formato esperado.")
 			}
 			continue
 		}
 		exercises++
 		if !validText(c.Question, 600) || utf8.RuneCountInString(c.Body) > 600 ||
-			!validText(c.Explanation, 1000) || len(c.Options) < 2 || len(c.Options) > 4 ||
+			!validText(c.Explanation, 1000) || len(c.Options) < 2 || len(c.Options) > maxOptions ||
 			c.Correct < 0 || c.Correct >= len(c.Options) {
 			return errors.New("Um exercício retornou fora do formato esperado.")
 		}
@@ -84,6 +135,19 @@ func validateLesson(l Lesson) error {
 			if !validText(option, 280) {
 				return errors.New("Um exercício retornou com alternativa inválida.")
 			}
+		}
+		switch c.QuestionOrigin {
+		case questionOriginal, questionAdapted:
+			source := c.QuestionSource
+			if !l.GoogleQuestions || source == nil || utf8.RuneCountInString(source.Title) > 160 || !validQuestionURL(source.URL) {
+				return errors.New("Um exercício retornou com fonte inválida.")
+			}
+		case questionCreated, "":
+			if c.QuestionSource != nil || l.GoogleQuestions && c.QuestionOrigin == "" {
+				return errors.New("Um exercício retornou com origem inválida.")
+			}
+		default:
+			return errors.New("Um exercício retornou com origem inválida.")
 		}
 	}
 	if exercises == 0 || exercises == len(l.Cards) {

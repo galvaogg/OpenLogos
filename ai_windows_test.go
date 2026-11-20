@@ -15,6 +15,7 @@ func TestProviderEnvironmentAllowsSessionDirectoriesOnly(t *testing.T) {
 		"OPENAI_API_KEY=secret", "CODEX_API_KEY=secret", "CODEX_CI=1", "OPENAI_BASE_URL=https://example.net",
 		"ANTHROPIC_API_KEY=secret", "ANTHROPIC_AUTH_TOKEN=secret", "CLAUDE_CODE_USE_BEDROCK=1",
 		"ANTHROPIC_BASE_URL=https://example.net", "NODE_OPTIONS=--require custom.js",
+		"OPENLOGOS_GOOGLE_SEARCH_KEY=secret",
 	}
 	if got := providerEnvironment(env); !reflect.DeepEqual(got, env[:4]) {
 		t.Fatal("environment should keep installation and session paths only")
@@ -56,7 +57,11 @@ func TestClaudeLessonPayload(t *testing.T) {
   "exercise1":{"title":"Prática 1","question":"Primeira pergunta?","hint":"Pense na causa."},
   "exercise2":{"title":"Prática 2","question":"Segunda pergunta?"}
 }}`)
-	lesson, isError, err := claudeLessonPayload(result)
+	payload, isError, err := claudeStructuredPayload(result)
+	if isError || err != nil {
+		t.Fatalf("invalid Claude output: %v", err)
+	}
+	lesson, _, err := decodeLessonPayload(payload, claude)
 	if isError || err != nil || len(lesson.Cards) != 3 || lesson.Cards[1].Question != "Primeira pergunta?" ||
 		lesson.Cards[0].Hint != "Explique o conceito." || lesson.Cards[1].Hint != "Pense na causa." {
 		t.Fatalf("did not join readings and exercises in order: %+v, %v", lesson, err)

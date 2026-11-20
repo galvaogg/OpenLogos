@@ -40,27 +40,44 @@ func exportLessonMarkdown(dir string, l Lesson) (string, error) {
 	}
 
 	var markdown, answers strings.Builder
-	fmt.Fprintf(&markdown, "# %s\n\n%s\n\n%s\n", l.Title, l.Topic, l.Summary)
+	text := func(value string) string { return value }
+	if l.GoogleQuestions {
+		text = strings.NewReplacer("\\", "\\\\", "<", "\\<", ">", "\\>", "[", "\\[", "]", "\\]",
+			"`", "\\`", "*", "\\*", "_", "\\_", "#", "\\#").Replace
+	}
+	fmt.Fprintf(&markdown, "# %s\n\n%s\n\n%s\n", text(l.Title), text(l.Topic), text(l.Summary))
+	if notice := l.questionSearchNotice(); notice != "" {
+		fmt.Fprintf(&markdown, "\n%s\n", notice)
+	}
 	for index, card := range l.Cards {
-		fmt.Fprintf(&markdown, "\n## %d. %s\n\n", index+1, card.Title)
+		fmt.Fprintf(&markdown, "\n## %d. %s\n\n", index+1, text(card.Title))
 		if card.Body != "" {
-			fmt.Fprintf(&markdown, "%s\n\n", card.Body)
+			fmt.Fprintf(&markdown, "%s\n\n", text(card.Body))
 		}
 		if card.Hint != "" {
-			fmt.Fprintf(&markdown, "> **Dica**  %s\n\n", card.Hint)
+			fmt.Fprintf(&markdown, "> **Dica**  %s\n\n", text(card.Hint))
 		}
 		if card.Question == "" {
 			continue
 		}
-		fmt.Fprintf(&markdown, "%s\n\n", card.Question)
-		for i, option := range card.Options {
-			fmt.Fprintf(&markdown, "- %c. %s\n", 'A'+i, option)
+		if origin := card.originLabel(); origin != "" {
+			fmt.Fprintf(&markdown, "**%s**\n\n", origin)
 		}
-		fmt.Fprintf(&answers, "### %d. %s\n\n**Resposta %c.** %s\n\n%s\n\n", index+1, card.Title, 'A'+card.Correct, card.Options[card.Correct], card.Explanation)
+		if source := card.QuestionSource; source != nil {
+			fmt.Fprintf(&markdown, "Fonte encontrada no Google <%s>\n\n", source.URL)
+		}
+		fmt.Fprintf(&markdown, "%s\n\n", text(card.Question))
+		for i, option := range card.Options {
+			fmt.Fprintf(&markdown, "- %c. %s\n", 'A'+i, text(option))
+		}
+		fmt.Fprintf(&answers, "### %d. %s\n\n**Resposta %c.** %s\n\n%s\n\n", index+1, text(card.Title), 'A'+card.Correct, text(card.Options[card.Correct]), text(card.Explanation))
 	}
-	fmt.Fprintf(&markdown, "\n## Gabarito\n\n%s## Bibliografia\n\n", answers.String())
-	for _, source := range l.Sources {
-		fmt.Fprintf(&markdown, "- %s\n", source)
+	fmt.Fprintf(&markdown, "\n## Gabarito\n\n%s", answers.String())
+	if !l.GoogleQuestions {
+		markdown.WriteString("## Bibliografia\n\n")
+		for _, source := range l.Sources {
+			fmt.Fprintf(&markdown, "- %s\n", source)
+		}
 	}
 
 	stem := "Estudo-" + strings.Join(strings.FieldsFunc(l.Title, func(r rune) bool {
